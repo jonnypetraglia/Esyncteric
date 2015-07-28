@@ -45,43 +45,23 @@ class DirListing:
                 files[f] = {}
                 self.walkDir(os.path.join(dir, f), files[f])
     
-    def diff(self, other):
-        return self._cmpPart(self.fileList, other.fileList)
+    def minus(self, other):
+        return self._min(self.fileList, other.fileList)
     
-    def _cmpPart(self, myList, otherList):
+    def _min(self, myList, otherList):
         result = {}
-        for key, myVal in myList.items():
-            otherVal = otherList[key] if key in otherList else {}
-            if key in myList and key not in otherList:
-                result[key] = "+"
-            elif key in otherList and key not in myList:
-                result[key] = "-"
-            elif type(myList[key]) != type(otherList[key]):
-                result[key] = "~"
-            elif key == ".":
-                files = result #.setdefault('.',{})
-                for basename in myVal:
-                    if basename not in otherVal:
-                        files[basename] = "+"
-                    elif myVal[basename] != otherVal[basename]:
-                        files[basename] = "~"
-                for basename in otherVal:
-                    if basename not in files:
-                        files[basename] = "-"
-            elif isinstance(myVal, dict):
-                print("Parting", key)
-                result[key] = self._cmpPart(myVal, otherVal)
-        for key, otherVal in otherList.items():
-            if key not in myList:
-                if key == ".":
-                    for basename in otherVal:
-                        result[basename] = "-"
+        for key in myList:
+            if key == ".":
+                result[key] = {}
+                for basename in myList[key]:
+                    if key not in otherList or basename not in otherList[key] or myList[key][basename] != otherList[key][basename]:
+                        result[key][basename] = myList[key][basename]
+            elif key not in otherList:
+                if isinstance(myList[key], dict):
+                    result[key] = self._min(myList[key], otherList[key] if key in otherList else {})
                 else:
-                    result[key] = "-"
-                #result[key] = self._cmpDeleted(otherVal)
+                    result[key] = myList[key]
         return result
-    
-    def _cmpDeleted(self, otherList):
         result = {}
         for key in otherList:
             if isinstance(otherList[key], dict):
@@ -95,5 +75,8 @@ class DirListing:
 
 testA = DirListing(os.path.join(MEDIA_DIR, "Music/Switchfoot"))
 testB = DirListing("/mnt/Tera/Media/Music/Switchfoot")
+#testB = DirListing(os.path.join(MEDIA_DIR, "Music/Owl City/Ocean Eyes"))
 #print(testA)
-printj(testA.diff(testB))
+#printj(testA.diff(testB))
+printj(testA.minus(testB))
+printj(testB.minus(testA))
