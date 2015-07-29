@@ -1,10 +1,6 @@
 # encoding: utf-8
-import json, os
 from tinytag import TinyTag
-import subprocess
-import shutil
-import multiprocessing
-import argparse
+import json, os, subprocess, shutil, multiprocessing, argparse
 
 
 class DirListing:
@@ -175,72 +171,85 @@ def check_negative(value):
     if ivalue <= 0:
          raise argparse.ArgumentTypeError("%s is an invalid int value" % value)
     return ivalue
-    
+
+
 ################################################
 
 parser = argparse.ArgumentParser(description='One-way file-based syncronization with per-file selection & custom commands')
-parser.add_argument('jsonfile', type=argparse.FileType('r'),
+parser.add_argument('jsonfile', type=argparse.FileType('r'), nargs="?",
                    help='path to a JSON file containing a sync configuration')
 parser.add_argument('--print',
                    choices=['all', 'config', 'source', 'dest', 'added', 'removed', 'missing', 'toTransfer', 'toRemove'],
                    help='prints JSON data but does not perform sync')
 parser.add_argument('-d', '--dry', action='store_true',
                    help='simulate the sync but do not perform')
-parser.add_argument('-c', '--concurrent', type=check_negative, default=multiprocessing.cpu_count(),
+parser.add_argument('-g', '--gui', action='store_true',
+                   help='show a GUI instead of performing the sync')
+parser.add_argument('-c', '--concurrent', metavar="N", type=check_negative, default=multiprocessing.cpu_count(),
                    help='maximum number of concurrent transcoding processes; defaults to number of cores')
 args = parser.parse_args()
-
-
-with args.jsonfile as data_file:
-    syncConfig = json.load(data_file)
-
-config = DirListing(syncConfig['sync'])
-source = DirListing(syncConfig['sourceDir'])
-dest = DirListing(syncConfig['destDir'])
-
-added = source.minus(dest)
-removed = dest.minus(source)
-
-missing = config.minus(source)
-toTransfer = config.intersection(added)
-toRemove = dest.minus(config)
+if args.gui is False and args.jsonfile is None:
+    parser.error("the following arguments are required: jsonfile")
 
 
 
-#print(toTransfer)
-#print("********************************")
-#print(toRemove)
-
-print(args.print)
-
-if args.print:
-    printables = {
-        'config':   config,
-        'source':   source,
-        'dest':     dest,
-        'added':    added,
-        'removed':  removed,
-        'missing':  missing,
-        'toTransfer': toTransfer,
-        'toRemove': toRemove
-    }
-    if args.print=="all":
-        for p in printables:
-            print(printables[p])
-    else:
-        print(printables[args.print])
-    exit(0)
 
 processes = set()
 max_processes = args.concurrent
 dry_run = args.dry
 
-exit(0)
 
-addFiles(toTransfer.fileList)
-removeFiles(toRemove.fileList)
+class Data(object):
+    def __init__(self, syncConfig):
+        self.config = DirListing(syncConfig['sync'])
+        self.source = DirListing(syncConfig['sourceDir'])
+        self.dest = DirListing(syncConfig['destDir'])
+        self.added = self.source.minus(self.dest)
+        self.removed = self.dest.minus(self.source)
+        self.missing = self.config.minus(self.source)
+        self.toTransfer = self.config.intersection(self.added)
+        self.toRemove = self.dest.minus(self.config)
 
-for p in processes:
-    if p.poll() is None:
-        p.wait()
+def loadJSON(file):
+    global syncConfig, data
+    with file as data_file:
+        syncConfig = json.load(data_file)
+    data = Data(syncConfig)
 
+def performSync():
+    addFiles(toTransfer.fileList)
+    removeFiles(toRemove.fileList)
+    for p in processes:
+        if p.poll() is None:
+            p.wait()
+
+
+if args.jsonfile:
+    loadJSON(args.jsonfile)
+
+if args.gui:
+    import gui
+    guiapp = gui.GuiApp()
+    if args.jsonfile:
+        guiapp.loadData(data)
+    gui.app.exec_()
+else:
+    if args.print:
+        printables = {
+            'config':   config,
+            'source':   source,
+            'dest':     dest,
+            'added':    added,
+            'removed':  removed,
+            'missing':  missing,
+            'toTransfer': toTransfer,
+            'toRemove': toRemove
+        }
+        if args.print=="all":
+            for p in printables:
+                print(printables[p])
+        else:
+            print(printables[args.print])
+        exit(0)
+    else:
+        performSync()
