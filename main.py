@@ -113,53 +113,92 @@ class DirListing:
         return helper(self.fileList)
 
 
-def addFiles(fileList, path=""):
-    if "." in fileList:
-        srcDir = os.path.join(source.dirPath, path)
-        destDir = os.path.join(dest.dirPath, path)
-        if not os.path.isdir(destDir):
-            os.makedirs(destDir)
-        for name, ext in fileList["."].items():
-            if ext.lower() not in syncConfig['filetypes']:
-                if dry_run:
-                    print("COPY:", os.path.join(path, name + ext), "->", os.path.join(path, name + ext))
-                else:
-                    shutil.copy2(
-                        os.path.join(srcDir, name + ext),
-                        os.path.join(destDir, name + ext))
-                continue
-            filetype = syncConfig['filetypes'][ext.lower()]
-            cmd = list(filetype['cmd'])
-            cmd[cmd.index(None)] = os.path.join(srcDir, name + ext)
-            if None in cmd:
-                cmd[cmd.index(None)] = os.path.join(destDir, name + filetype['to'])
-            if dry_run:
-                print("CONVERT:", os.path.join(path, name + ext), "->", os.path.join(path, name + filetype['to']))
-            else:
-                processes.add(subprocess.check_call(cmd, stdout=subprocess.DEVNULL))
-                if len(processes) >= max_processes:
-                    os.wait()
-                    processes.difference_update([p for p in processes if p.poll() is not None])
-    for name in fileList:
-        if name != ".":
-            addFiles(fileList[name], os.path.join(path, name))
+    def addFiles(self, sourcePath, destPath):
+        def helper(fileList, path=""):
+            if "." in fileList:
+                srcDir = os.path.join(sourcePath, path)
+                destDir = os.path.join(destPath, path)
+                if not os.path.isdir(destDir):
+                    os.makedirs(destDir)
+                for name, ext in fileList["."].items():
+                    if ext.lower() not in syncConfig['filetypes']:
+                        if dry_run:
+                            print("COPY:", os.path.join(path, name + ext), "->", os.path.join(path, name + ext))
+                        else:
+                            shutil.copy2(
+                                os.path.join(srcDir, name + ext),
+                                os.path.join(destDir, name + ext))
+                        continue
+                    filetype = syncConfig['filetypes'][ext.lower()]
+                    cmd = list(filetype['cmd'])
+                    cmd[cmd.index(None)] = os.path.join(srcDir, name + ext)
+                    if None in cmd:
+                        cmd[cmd.index(None)] = os.path.join(destDir, name + filetype['to'])
+                    if dry_run:
+                        print("CONVERT:", os.path.join(path, name + ext), "->", os.path.join(path, name + filetype['to']))
+                    else:
+                        processes.add(subprocess.check_call(cmd, stdout=subprocess.DEVNULL))
+                        if len(processes) >= max_processes:
+                            os.wait()
+                            processes.difference_update([p for p in processes if p.poll() is not None])
+            for name in fileList:
+                if name != ".":
+                    helper(fileList[name], os.path.join(path, name))
+        return helper(self.fileList)
 
-def removeFiles(fileList, path=""):
-    destDir = os.path.join(dest.dirPath, path)
-    if "." in fileList:
-        for name, ext in fileList["."].items():
-            if dry_run:
-                print("REMOVE:", os.path.join(path, name + ext))
-            else:
-                os.remove(os.path.join(destDir, name + ext))
-    for name in fileList:
-        if name != ".":
-            removeFiles(fileList[name], os.path.join(path, name))
-    if path!= "" and not os.listdir(destDir):
-        if dry_run:
-            print("RMDIR:", destDir)
-        else:
-            os.rmdir(destDir)
+    def removeFiles(self, destPath):
+        def helper(fileList, path=""):
+            destDir = os.path.join(destPath, path)
+            if "." in fileList:
+                for name, ext in fileList["."].items():
+                    if dry_run:
+                        print("REMOVE:", os.path.join(path, name + ext))
+                    else:
+                        os.remove(os.path.join(destDir, name + ext))
+            for name in fileList:
+                if name != ".":
+                    helper(fileList[name], os.path.join(path, name))
+            if path!= "" and not os.listdir(destDir):
+                if dry_run:
+                    print("RMDIR:", destDir)
+                else:
+                    os.rmdir(destDir)
+        return helper(self.fileList)
+
+class Data(object):
+    global syncConfig
+    def __init__(self, dataFile):
+        self._dataFile = dataFile
+        self._loaded = False
+        self.reload()
+        
+    def reload(self):
+        global syncConfig
+        with open(self._dataFile) if isinstance(self._dataFile, str) else self._dataFile as jsonContents: 
+            syncConfig = json.load(jsonContents)
+        if not isinstance(self._dataFile, str):
+            self._dataFile = self._dataFile.name
+        return self.refresh()
+        
+    def refresh(self):
+        self.config = DirListing(syncConfig['sync'])
+        self.source = DirListing(syncConfig['sourceDir'])
+        self.dest = DirListing(syncConfig['destDir'])
+        self.added = self.source.minus(self.dest)
+        self.removed = self.dest.minus(self.source)
+        self.missing = self.config.minus(self.source)
+        self.toTransfer = self.config.intersection(self.added)
+        self.toRemove = self.dest.minus(self.config)
+        self._loaded = True
+        return self
+
+    def performSync(self):
+        self.toTransfer.addFiles(self.source.dirPath, self.dest.dirPath)
+        self.toRemove.removeFiles(self.dest.dirPath)
+        for p in processes:
+            if p.poll() is None:
+                p.wait()
+
 
 
 def printj(j):
@@ -197,41 +236,6 @@ if args.gui is False and args.jsonfile is None:
 processes = set()
 max_processes = args.concurrent
 dry_run = args.dry
-
-
-class Data(object):
-    global syncConfig
-    def __init__(self, dataFile):
-        self._dataFile = dataFile
-        self._loaded = False
-        self.reload()
-        
-    def reload(self):
-        global syncConfig
-        with open(self._dataFile) if isinstance(self._dataFile, str) else self._dataFile as jsonContents: 
-            syncConfig = json.load(jsonContents)
-        if not isinstance(self._dataFile, str):
-            self._dataFile = self._dataFile.name
-        return self.refresh()
-        
-    def refresh(self):
-        self.config = DirListing(syncConfig['sync'])
-        self.source = DirListing(syncConfig['sourceDir'])
-        self.dest = DirListing(syncConfig['destDir'])
-        self.added = self.source.minus(self.dest)
-        self.removed = self.dest.minus(self.source)
-        self.missing = self.config.minus(self.source)
-        self.toTransfer = self.config.intersection(self.added)
-        self.toRemove = self.dest.minus(self.config)
-        self._loaded = True
-        return self
-
-    def performSync(self):
-        addFiles(self.toTransfer.fileList)
-        removeFiles(self.toRemove.fileList)
-        for p in processes:
-            if p.poll() is None:
-                p.wait()
 
 
 if args.gui:
