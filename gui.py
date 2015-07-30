@@ -21,11 +21,10 @@ class GuiApp(QtGui.QMainWindow):
         newAction.setStatusTip('Create new sync config')
         #TODO: New dialog
         openAction = QtGui.QAction('&Open', self)
-        openAction.setEnabled(False)
         openAction.setIcon(QtGui.QIcon.fromTheme(_fromUtf8("document-open")))
         openAction.setShortcut('Ctrl+O')
         openAction.setStatusTip('Open existing sync config')
-        #TODO: Open dialog
+        openAction.triggered.connect(self.fileOpen)
         exitAction = QtGui.QAction('&Quit', self)
         exitAction.setIcon(QtGui.QIcon.fromTheme(_fromUtf8("application-exit")))
         exitAction.setShortcut('Ctrl+Q')
@@ -41,7 +40,7 @@ class GuiApp(QtGui.QMainWindow):
         self.refreshAction.setIcon(QtGui.QIcon.fromTheme(_fromUtf8("view-refresh")))
         self.refreshAction.setShortcut('Ctrl+R')
         self.refreshAction.setStatusTip('Rescan the source and destination directories')
-        #TODO: Refresh
+        self.refreshAction.triggered.connect(self.refresh)
         self.optionsAction = QtGui.QAction('&Options', self)
         self.optionsAction.setEnabled(False)
         self.optionsAction.setIcon(QtGui.QIcon.fromTheme(_fromUtf8('document-properties')))
@@ -78,6 +77,18 @@ class GuiApp(QtGui.QMainWindow):
         self.green = QtCore.Qt.darkGreen
         self.orange = QtCore.Qt.darkYellow
         self.default = QtCore.Qt.white
+    
+    def refresh(self):
+        self.sourceTree.clear()
+        self.destinationTree.clear()
+        self.loadData(self.data.reload())
+        
+    def fileOpen(self):
+        x = QtGui.QFileDialog.getOpenFileName(self, 'Open Existing Sync File', None, "JSON (*.json)")
+        if not x:
+            return
+        self.data._dataFile = x
+        self.refresh()
         
     def _createItem(self, text, parent, tristate=False):
         item = QtGui.QTreeWidgetItem(parent)
@@ -118,19 +129,6 @@ class GuiApp(QtGui.QMainWindow):
             return None
         return self._getChild(item, mid)
         
-        
-    def _findItemInTree(self, item, tree):
-        parents = self._getParents(item)
-        parents.append(item)
-        search = tree
-        for p in parents:
-            nextSearch = self._findChild(search, p.text(0))
-            if not nextSearch:
-                #break
-                return None
-            search = nextSearch
-        return search if search != tree else None
-        
     def _colorItem(self, item):
         parents = self._getParents(item)
         parents.append(item)
@@ -141,10 +139,8 @@ class GuiApp(QtGui.QMainWindow):
             if not destSearch:
                 break
             destParents.append(destSearch)
-        d = 0
-        for p in parents:
-            self._doColoring(p, destParents[d] if d < len(destParents) else None)
-            d += 1
+        for x in range(0, len(parents)):
+            self._doColoring(parents[x], destParents[x] if x < len(destParents) else None)
 
     def _doColoring(self, item, destItem):
         if destItem:
@@ -174,13 +170,12 @@ class GuiApp(QtGui.QMainWindow):
         return parentList
                 
             
-
     def loadData(self, data):
         if self.data:
             self.sourceTree.itemChanged.disconnect(self._clickItem)
         self.data = data
-        self._load(self.sourceTree, data.source.fileList, self.sourceTree)
         self._load(self.destinationTree, data.dest.fileList, self.destinationTree)
+        self._load(self.sourceTree, data.source.fileList, self.sourceTree, data.config.fileList)
         self.refreshAction.setEnabled(True)
         self.optionsAction.setEnabled(True)
         self.sourceTree.itemChanged.connect(self._clickItem)
@@ -195,8 +190,10 @@ class GuiApp(QtGui.QMainWindow):
         if "." in fileList:
             for key, value in fileList["."].items():
                 item = self._createItem(key, parent, tree==self.sourceTree)
-                self._colorItem(item)
                 if "." in checkList and key in checkList["."]:
                     item.setCheckState(0, QtCore.Qt.Checked)
+                self._colorItem(item)
             if not isinstance(parent, QtGui.QTreeWidget):
                 self._colorItem(parent)
+
+

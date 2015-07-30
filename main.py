@@ -30,7 +30,6 @@ class DirListing:
                 
 
     def walkDir(self, dir, files):
-        # TODO: Filetype filtering
         for f in os.listdir(dir):
             if os.path.isfile(os.path.join(dir, f)):
                 files.setdefault('.',{})
@@ -200,7 +199,18 @@ dry_run = args.dry
 
 
 class Data(object):
-    def __init__(self, syncConfig):
+    global syncConfig
+    def __init__(self, dataFile):
+        self._dataFile = dataFile
+        self._loaded = False
+        self.reload()
+        
+    def reload(self):
+        global syncConfig
+        with open(self._dataFile) if isinstance(self._dataFile, str) else self._dataFile as jsonContents: 
+            syncConfig = json.load(jsonContents)
+        if not isinstance(self._dataFile, str):
+            self._dataFile = self._dataFile.name
         self.config = DirListing(syncConfig['sync'])
         self.source = DirListing(syncConfig['sourceDir'])
         self.dest = DirListing(syncConfig['destDir'])
@@ -209,31 +219,25 @@ class Data(object):
         self.missing = self.config.minus(self.source)
         self.toTransfer = self.config.intersection(self.added)
         self.toRemove = self.dest.minus(self.config)
+        self._loaded = True
+        return self
 
-def loadJSON(file):
-    global syncConfig, data
-    with file as data_file:
-        syncConfig = json.load(data_file)
-    data = Data(syncConfig)
+    def performSync(self):
+        addFiles(self.toTransfer.fileList)
+        removeFiles(self.toRemove.fileList)
+        for p in processes:
+            if p.poll() is None:
+                p.wait()
 
-def performSync():
-    addFiles(toTransfer.fileList)
-    removeFiles(toRemove.fileList)
-    for p in processes:
-        if p.poll() is None:
-            p.wait()
-
-
-if args.jsonfile:
-    loadJSON(args.jsonfile)
 
 if args.gui:
     import gui
     guiapp = gui.GuiApp()
     if args.jsonfile:
-        guiapp.loadData(data)
+        guiapp.loadData(Data(args.jsonfile))
     gui.app.exec_()
 else:
+    data = Data(args.jsonfile)
     if args.print:
         printables = {
             'config':   config,
@@ -252,4 +256,4 @@ else:
             print(printables[args.print])
         exit(0)
     else:
-        performSync()
+        data.performSync()
