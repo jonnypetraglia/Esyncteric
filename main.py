@@ -45,76 +45,72 @@ class DirListing:
                 self.walkDir(os.path.join(dir, f), files[f])
     
     def minus(self, other):
-        return DirListing(self._min(self.fileList, other.fileList))
+        def helper(myList, otherList):
+            result = {}
+            for key in myList:
+                if key == ".":
+                    for basename in myList[key]:
+                        if key not in otherList or basename not in otherList[key]:
+                            result.setdefault(key,{})[basename] = myList[key][basename]
+                elif key in otherList:
+                    if isinstance(myList[key], dict):
+                        result[key] = helper(myList[key], otherList[key])
+                        if result[key] == {}:
+                            del result[key]
+                else:
+                    result[key] = myList[key]
+            return result
+        return DirListing(helper(self.fileList, other.fileList))
     
     def altered(self, other):
-        return DirListing(self._alt(self.fileList, other.fileList))
+        def helper(myList, otherList):
+            result = {}
+            for key in myList:
+                if key == ".":
+                    for basename in myList[key]:
+                        if key in otherList and basename in otherList[key] and myList[key][basename] != otherList[key][basename]:
+                            result.setdefault(key,{})[basename] = myList[key][basename]
+                elif key in otherList:
+                    if isinstance(myList[key], dict):
+                        result[key] = helper(myList[key], otherList[key])
+                        if result[key] == {}:
+                            del result[key]
+                    elif myList[key] != otherList[key]:
+                        result[key] = myList[key]
+            return result
+        return DirListing(helper(self.fileList, other.fileList))
     
     def intersection(self, other):
-        return DirListing(self._inter(self.fileList, other.fileList))
+        def helper(myList, otherList):
+            result = {}
+            for key in myList:
+                if key == ".":
+                    for basename in myList[key]:
+                        if key in otherList and basename in otherList[key] and myList[key][basename] == otherList[key][basename]:
+                            result.setdefault(key,{})[basename] = myList[key][basename]
+                elif key in otherList:
+                    if isinstance(myList[key], dict):
+                        result[key] = helper(myList[key], otherList[key])
+                        if result[key] == {}:
+                            del result[key]
+                    elif myList[key] == otherList[key]:
+                        result[key] = myList[key]
+            return result
+        return DirListing(helper(self.fileList, other.fileList))
     
     def toConfig(self):
-        return self._conf(self.fileList)
-    
-    def _inter(self, myList, otherList):
-        result = {}
-        for key in myList:
-            if key == ".":
-                for basename in myList[key]:
-                    if key in otherList and basename in otherList[key] and myList[key][basename] == otherList[key][basename]:
-                        result.setdefault(key,{})[basename] = myList[key][basename]
-            elif key in otherList:
-                if isinstance(myList[key], dict):
-                    result[key] = self._inter(myList[key], otherList[key])
+        def helper(myList):
+            result = {}
+            for key in myList:
+                if key == ".":
+                    for basename, ext in myList[key].items():
+                        result.setdefault(key,[]).append(basename + ext)
+                else:
+                    result[key] = helper(myList[key])
                     if result[key] == {}:
-                        del result[key]
-                elif myList[key] == otherList[key]:
-                    result[key] = myList[key]
-        return result
-    
-    def _alt(self, myList, otherList):
-        result = {}
-        for key in myList:
-            if key == ".":
-                for basename in myList[key]:
-                    if key in otherList and basename in otherList[key] and myList[key][basename] != otherList[key][basename]:
-                        result.setdefault(key,{})[basename] = myList[key][basename]
-            elif key in otherList:
-                if isinstance(myList[key], dict):
-                    result[key] = self._alt(myList[key], otherList[key])
-                    if result[key] == {}:
-                        del result[key]
-                elif myList[key] != otherList[key]:
-                    result[key] = myList[key]
-        return result
-    
-    def _min(self, myList, otherList):
-        result = {}
-        for key in myList:
-            if key == ".":
-                for basename in myList[key]:
-                    if key not in otherList or basename not in otherList[key]:
-                        result.setdefault(key,{})[basename] = myList[key][basename]
-            elif key in otherList:
-                if isinstance(myList[key], dict):
-                    result[key] = self._min(myList[key], otherList[key])
-                    if result[key] == {}:
-                        del result[key]
-            else:
-                result[key] = myList[key]
-        return result
-    
-    def _conf(self, myList):
-        result = {}
-        for key in myList:
-            if key == ".":
-                for basename, ext in myList[key].items():
-                    result.setdefault(key,[]).append(basename + ext)
-            else:
-                result[key] = self._conf(myList[key])
-                if result[key] == {}:
-                        del result[key]
-        return result
+                            del result[key]
+            return result
+        return helper(self.fileList)
 
 
 def addFiles(fileList, path=""):
