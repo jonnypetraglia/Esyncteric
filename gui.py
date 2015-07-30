@@ -1,7 +1,20 @@
 import PyQt4.QtGui as QtGui
 import PyQt4.QtCore as QtCore
 
+import os
+import signal
+signal.signal(signal.SIGINT, signal.SIG_DFL)
+
 app = QtGui.QApplication([])
+
+def appName():
+    try:
+        return app.applicationDisplayName()
+    except:
+        return app.applicationName()    
+
+#TODO: Drag n drop support
+#TODO: "Are you sure?" when modified on: fileOpen, fileNew, quit
 
 class GuiApp(QtGui.QMainWindow):
     def __init__(self):
@@ -11,7 +24,8 @@ class GuiApp(QtGui.QMainWindow):
             _fromUtf8 = QtCore.QString.fromUtf8
         except AttributeError:
             _fromUtf8 = lambda s: s
-        self.setWindowTitle('Subsonic')
+        self.setWindowTitle(appName())
+        #TODO: Icon
         #self.setWindowIcon(QtGui.QIcon('web.png'))
         
         def createAction(label, icon, shortcut, desc, slot):
@@ -23,30 +37,35 @@ class GuiApp(QtGui.QMainWindow):
             return action
         
         menubar = self.menuBar()
+        
         newAction = createAction("&New", "document-new", "Ctrl+N", 'Create new sync config', self.fileNew)
         openAction = createAction("&Open", "document-open", "Ctrl+O", 'Open existing sync config', self.fileOpen)
         saveAction = createAction("&Save", "document-save", "Ctrl+S", 'Save config to disk', self.fileSave)
-        exitAction = createAction("&Quit", "application-exit", "Ctrl+Q", 'Exit application', QtGui.qApp.quit)
+        quitAction = createAction("&Quit", "application-exit", "Ctrl+Q", 'Exit application', self.quit)
         fileMenu = menubar.addMenu('&File')
         fileMenu.addAction(newAction)
         fileMenu.addAction(openAction)
         fileMenu.addAction(saveAction)
-        fileMenu.addAction(exitAction)
+        fileMenu.addAction(quitAction)
+        
+        runAction = createAction("&Run", "system-run", None, 'Perform the sync', self.runSync)
+        dryRunAction = createAction("&Dry run", None, None, 'Perform the sync', self.dryRunSync)
+        settingsAction = createAction("&Settings", "document-properties", None, 'Adjust settings for this sync configuration', self.showSettings)
+        syncMenu = menubar.addMenu('&Sync')
+        syncMenu.addAction(runAction)
+        syncMenu.addAction(dryRunAction)
+        syncMenu.addAction(settingsAction)
         
         refreshAction = createAction("&Refresh", "view-refresh", "Ctrl+R", 'Rescan the source and destination directories', self.refresh)
-        optionsAction = createAction("&Options", "document-properties", None, 'Adjust settings for this sync configuration', self.showOptions)
+        aboutAction = createAction("&About", "help-about", None, 'About %s' % appName(), self.about)
         toolMenu = menubar.addMenu('&Tools')
         toolMenu.addAction(refreshAction)
-        toolMenu.addAction(optionsAction)
+        toolMenu.addAction(aboutAction)
         
         
         self.actionsRequiringAFileBeOpen = [
-            saveAction, refreshAction, optionsAction
+            saveAction, refreshAction, runAction, dryRunAction, settingsAction
             ]
-        
-        aboutAction = createAction("&About", "help-about", None, 'About Subsonic', self.about)
-        helpMenu = menubar.addMenu('&Help')
-        helpMenu.addAction(aboutAction)
         
         self.sourceTree = QtGui.QTreeWidget()
         self.sourceTree.setHeaderLabel("Source")
@@ -71,6 +90,9 @@ class GuiApp(QtGui.QMainWindow):
         self.orange = QtCore.Qt.darkYellow
         self.default = QtCore.Qt.white
     
+    def quit(self):
+        QtGui.qApp.quit()
+    
     def refresh(self):
         self.sourceTree.clear()
         self.destinationTree.clear()
@@ -78,17 +100,27 @@ class GuiApp(QtGui.QMainWindow):
         
     def fileNew(self):
         #TODO: New dialog
+        # showSettings to get initial values first for sourceDir, destinationDir, etc
         pass
     def fileSave(self):
         #TODO: Save
         pass
     
-    def showOptions(self):
-        #TODO: Options (CPU Cores, sourceDir, destDir, filetypes{cmd,to}
+    def showSettings(self):
+        #TODO: Sync settings (CPU Cores, sourceDir, destDir, filetypes{cmd,to}
         pass
     
     def about(self):
         #TODO: About
+        pass
+    
+    def runSync(self):
+        #TODO: Disable widgets while running, progress tracking, add "Cancel" button somewhere (StatusBar?)
+        #self.data.performSync()
+        pass
+    
+    def dryRunSync(self):
+        #TODO: Dry run
         pass
         
     def fileOpen(self):
@@ -170,6 +202,7 @@ class GuiApp(QtGui.QMainWindow):
                 
             
     def loadData(self, data):
+        self.setWindowTitle(appName() + " - " + os.path.basename(data._dataFile))
         def load(tree, fileList, parent, checkList={}):
             def createItem(text, parent, tristate=False):
                 item = QtGui.QTreeWidgetItem(parent)

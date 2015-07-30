@@ -2,6 +2,11 @@
 from tinytag import TinyTag
 import json, os, subprocess, shutil, multiprocessing, argparse
 
+APP_NAME = "Subsonic"
+VERSION = "0.0.1"
+AUTHOR = "Qweex LLC"
+AUTHOR_URL = "qweex.com"
+
 
 class DirListing:
     def __str__(self):
@@ -235,6 +240,13 @@ class Data(object):
 
 if args.gui:
     import gui
+    try:
+        gui.app.setApplicationDisplayName(APP_NAME)
+    except:
+        gui.app.setApplicationName(APP_NAME)
+    gui.app.setOrganizationName(AUTHOR)
+    gui.app.setOrganizationDomain(AUTHOR_URL)
+    gui.app.setApplicationVersion(VERSION)
     guiapp = gui.GuiApp()
     if args.jsonfile:
         guiapp.loadData(Data(args.jsonfile))
