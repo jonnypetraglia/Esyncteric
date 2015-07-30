@@ -14,45 +14,37 @@ class GuiApp(QtGui.QMainWindow):
         self.setWindowTitle('Subsonic')
         #self.setWindowIcon(QtGui.QIcon('web.png'))
         
+        def createAction(label, icon, shortcut, desc, slot):
+            action = QtGui.QAction(QtGui.QIcon.fromTheme(_fromUtf8(icon)), label, self)
+            if shortcut:
+                action.setShortcut(shortcut)
+            action.setStatusTip(desc)
+            action.triggered.connect(slot)
+            return action
+        
         menubar = self.menuBar()
-        newAction = QtGui.QAction('&New', self)
-        newAction.setIcon(QtGui.QIcon.fromTheme(_fromUtf8("document-new")))
-        newAction.setShortcut('Ctrl+N')
-        newAction.setStatusTip('Create new sync config')
-        #TODO: New dialog
-        openAction = QtGui.QAction('&Open', self)
-        openAction.setIcon(QtGui.QIcon.fromTheme(_fromUtf8("document-open")))
-        openAction.setShortcut('Ctrl+O')
-        openAction.setStatusTip('Open existing sync config')
-        openAction.triggered.connect(self.fileOpen)
-        exitAction = QtGui.QAction('&Quit', self)
-        exitAction.setIcon(QtGui.QIcon.fromTheme(_fromUtf8("application-exit")))
-        exitAction.setShortcut('Ctrl+Q')
-        exitAction.setStatusTip('Exit application')
-        exitAction.triggered.connect(QtGui.qApp.quit)
+        newAction = createAction("&New", "document-new", "Ctrl+N", 'Create new sync config', self.fileNew)
+        openAction = createAction("&Open", "document-open", "Ctrl+O", 'Open existing sync config', self.fileOpen)
+        saveAction = createAction("&Save", "document-save", "Ctrl+S", 'Save config to disk', self.fileSave)
+        exitAction = createAction("&Quit", "application-exit", "Ctrl+Q", 'Exit application', QtGui.qApp.quit)
         fileMenu = menubar.addMenu('&File')
         fileMenu.addAction(newAction)
         fileMenu.addAction(openAction)
+        fileMenu.addAction(saveAction)
         fileMenu.addAction(exitAction)
         
-        self.refreshAction = QtGui.QAction('&Refresh', self)
-        self.refreshAction.setEnabled(False)
-        self.refreshAction.setIcon(QtGui.QIcon.fromTheme(_fromUtf8("view-refresh")))
-        self.refreshAction.setShortcut('Ctrl+R')
-        self.refreshAction.setStatusTip('Rescan the source and destination directories')
-        self.refreshAction.triggered.connect(self.refresh)
-        self.optionsAction = QtGui.QAction('&Options', self)
-        self.optionsAction.setEnabled(False)
-        self.optionsAction.setIcon(QtGui.QIcon.fromTheme(_fromUtf8('document-properties')))
-        self.optionsAction.setStatusTip('Adjust settings for this sync configuration')
-        #TODO: Options (CPU Cores, sourceDir, destDir, filetypes{cmd,to}
+        refreshAction = createAction("&Refresh", "view-refresh", "Ctrl+R", 'Rescan the source and destination directories', self.refresh)
+        optionsAction = createAction("&Options", "document-properties", None, 'Adjust settings for this sync configuration', self.showOptions)
         toolMenu = menubar.addMenu('&Tools')
-        toolMenu.addAction(self.refreshAction)
-        toolMenu.addAction(self.optionsAction)
+        toolMenu.addAction(refreshAction)
+        toolMenu.addAction(optionsAction)
         
-        aboutAction = QtGui.QAction('&About', self)
-        aboutAction.setIcon(QtGui.QIcon.fromTheme(_fromUtf8("help-about")))
-        aboutAction.setStatusTip('About Subsonic')
+        
+        self.actionsRequiringAFileBeOpen = [
+            saveAction, refreshAction, optionsAction
+            ]
+        
+        aboutAction = createAction("&About", "help-about", None, 'About Subsonic', self.about)
         helpMenu = menubar.addMenu('&Help')
         helpMenu.addAction(aboutAction)
         
@@ -71,6 +63,7 @@ class GuiApp(QtGui.QMainWindow):
         widget = QtGui.QWidget(self)
         widget.setLayout(layout)
         self.setCentralWidget(widget)
+        self.resize(800, 600)
         self.show()
         
         self.red = QtCore.Qt.darkRed
@@ -81,26 +74,31 @@ class GuiApp(QtGui.QMainWindow):
     def refresh(self):
         self.sourceTree.clear()
         self.destinationTree.clear()
-        self.loadData(self.data.reload())
+        self.loadData(self.data.refresh())
+        
+    def fileNew(self):
+        #TODO: New dialog
+        pass
+    def fileSave(self):
+        #TODO: Save
+        pass
+    
+    def showOptions(self):
+        #TODO: Options (CPU Cores, sourceDir, destDir, filetypes{cmd,to}
+        pass
+    
+    def about(self):
+        #TODO: About
+        pass
         
     def fileOpen(self):
         x = QtGui.QFileDialog.getOpenFileName(self, 'Open Existing Sync File', None, "JSON (*.json)")
         if not x:
             return
         self.data._dataFile = x
-        self.refresh()
-        
-    def _createItem(self, text, parent, tristate=False):
-        item = QtGui.QTreeWidgetItem(parent)
-        item.setText(0, text)
-        if tristate:
-            item.setCheckState(0, QtCore.Qt.Unchecked)
-            item.setFlags(QtCore.Qt.ItemIsUserCheckable | QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsTristate)
-        return item
-    
-    def _setBg(self, item, bg):
-        item.setBackgroundColor(0, bg)
-        item.setTextColor(0, QtCore.Qt.black if bg == QtCore.Qt.white else QtCore.Qt.white)
+        self.sourceTree.clear()
+        self.destinationTree.clear()
+        self.loadData(self.data.reload())
         
     def _getChild(self, item, ind):
         if isinstance(item, QtGui.QTreeWidget):
@@ -130,7 +128,30 @@ class GuiApp(QtGui.QMainWindow):
         return self._getChild(item, mid)
         
     def _colorItem(self, item):
-        parents = self._getParents(item)
+        def doColoring(item, destItem):
+            if destItem:
+                if item.checkState(0) == QtCore.Qt.Unchecked:
+                    setBg(destItem, self.red)
+                else:
+                    setBg(item, self.default)
+                    setBg(destItem, self.default)
+            else:
+                if item.checkState(0) == QtCore.Qt.Unchecked:
+                    setBg(item, self.default)
+                else:
+                    setBg(item, self.green)
+        def getParents(item):
+            parentList = []
+            p = item.parent()
+            while p:
+                parentList.append(p)
+                p = p.parent()
+            parentList.reverse()
+            return parentList
+        def setBg(item, bg):
+            item.setBackgroundColor(0, bg)
+            item.setTextColor(0, QtCore.Qt.black if bg == QtCore.Qt.white else QtCore.Qt.white)
+        parents = getParents(item)
         parents.append(item)
         destParents = []
         destSearch = self.destinationTree
@@ -140,60 +161,46 @@ class GuiApp(QtGui.QMainWindow):
                 break
             destParents.append(destSearch)
         for x in range(0, len(parents)):
-            self._doColoring(parents[x], destParents[x] if x < len(destParents) else None)
-
-    def _doColoring(self, item, destItem):
-        if destItem:
-            if item.checkState(0) == QtCore.Qt.Unchecked:
-                self._setBg(destItem, self.red)
-            else:
-                self._setBg(item, self.default)
-                self._setBg(destItem, self.default)
-        else:
-            if item.checkState(0) == QtCore.Qt.Unchecked:
-                self._setBg(item, self.default)
-            else:
-                self._setBg(item, self.green)
+            doColoring(parents[x], destParents[x] if x < len(destParents) else None)
             
     def _clickItem(self, item):
         self.sourceTree.itemChanged.disconnect(self._clickItem)
         self._colorItem(item)
         self.sourceTree.itemChanged.connect(self._clickItem)
-
-    def _getParents(self, item):
-        parentList = []
-        p = item.parent()
-        while p:
-            parentList.append(p)
-            p = p.parent()
-        parentList.reverse()
-        return parentList
                 
             
     def loadData(self, data):
+        def load(tree, fileList, parent, checkList={}):
+            def createItem(text, parent, tristate=False):
+                item = QtGui.QTreeWidgetItem(parent)
+                item.setText(0, text)
+                if tristate:
+                    item.setCheckState(0, QtCore.Qt.Unchecked)
+                    item.setFlags(QtCore.Qt.ItemIsUserCheckable | QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsTristate)
+                return item
+            
+            for key, value in fileList.items():
+                if key==".":
+                    continue
+                item = createItem(key, parent, tree==self.sourceTree)
+                item.setChildIndicatorPolicy(QtGui.QTreeWidgetItem.ShowIndicator)
+                load(tree, value, item, checkList[key] if key in checkList else {})
+            if "." in fileList:
+                for key, value in fileList["."].items():
+                    item = createItem(key, parent, tree==self.sourceTree)
+                    if "." in checkList and key in checkList["."]:
+                        item.setCheckState(0, QtCore.Qt.Checked)
+                    self._colorItem(item)
+                if not isinstance(parent, QtGui.QTreeWidget):
+                    self._colorItem(parent)
+
+        
         if self.data:
             self.sourceTree.itemChanged.disconnect(self._clickItem)
         self.data = data
-        self._load(self.destinationTree, data.dest.fileList, self.destinationTree)
-        self._load(self.sourceTree, data.source.fileList, self.sourceTree, data.config.fileList)
-        self.refreshAction.setEnabled(True)
-        self.optionsAction.setEnabled(True)
+        load(self.destinationTree, data.dest.fileList, self.destinationTree)
+        load(self.sourceTree, data.source.fileList, self.sourceTree, data.config.fileList)
+        for action in self.actionsRequiringAFileBeOpen:
+            action.setEnabled(True)
         self.sourceTree.itemChanged.connect(self._clickItem)
-    
-    def _load(self, tree, fileList, parent, checkList={}):
-        for key, value in fileList.items():
-            if key==".":
-                continue
-            item = self._createItem(key, parent, tree==self.sourceTree)
-            item.setChildIndicatorPolicy(QtGui.QTreeWidgetItem.ShowIndicator)
-            self._load(tree, value, item, checkList[key] if key in checkList else {})
-        if "." in fileList:
-            for key, value in fileList["."].items():
-                item = self._createItem(key, parent, tree==self.sourceTree)
-                if "." in checkList and key in checkList["."]:
-                    item.setCheckState(0, QtCore.Qt.Checked)
-                self._colorItem(item)
-            if not isinstance(parent, QtGui.QTreeWidget):
-                self._colorItem(parent)
-
 

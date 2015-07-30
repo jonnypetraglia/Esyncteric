@@ -211,6 +211,9 @@ class Data(object):
             syncConfig = json.load(jsonContents)
         if not isinstance(self._dataFile, str):
             self._dataFile = self._dataFile.name
+        return self.refresh()
+        
+    def refresh(self):
         self.config = DirListing(syncConfig['sync'])
         self.source = DirListing(syncConfig['sourceDir'])
         self.dest = DirListing(syncConfig['destDir'])
