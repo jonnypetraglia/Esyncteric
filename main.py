@@ -1,8 +1,7 @@
 # encoding: utf-8
-from tinytag import TinyTag
 import json, os, subprocess, shutil, multiprocessing, argparse
 
-APP_NAME = "Subsonic"
+APP_NAME = "Esyncteric"
 VERSION = "0.0.1"
 AUTHOR = "Qweex LLC"
 AUTHOR_URL = "qweex.com"
@@ -113,7 +112,7 @@ class DirListing:
         return helper(self.fileList)
 
 
-    def addFiles(self, sourcePath, destPath):
+    def addFiles(self, sourcePath, destPath, filetypes):
         def helper(fileList, path=""):
             if "." in fileList:
                 srcDir = os.path.join(sourcePath, path)
@@ -121,7 +120,7 @@ class DirListing:
                 if not os.path.isdir(destDir):
                     os.makedirs(destDir)
                 for name, ext in fileList["."].items():
-                    if ext.lower() not in syncConfig['filetypes']:
+                    if ext.lower() not in filetypes:
                         if dry_run:
                             print("COPY:", os.path.join(path, name + ext), "->", os.path.join(path, name + ext))
                         else:
@@ -129,7 +128,7 @@ class DirListing:
                                 os.path.join(srcDir, name + ext),
                                 os.path.join(destDir, name + ext))
                         continue
-                    filetype = syncConfig['filetypes'][ext.lower()]
+                    filetype = filetypes[ext.lower()]
                     cmd = list(filetype['cmd'])
                     cmd[cmd.index(None)] = os.path.join(srcDir, name + ext)
                     if None in cmd:
@@ -173,15 +172,14 @@ class Data(object):
         self.reload()
         
     def reload(self):
-        global syncConfig
         with open(self._dataFile) if isinstance(self._dataFile, str) else self._dataFile as jsonContents: 
-            syncConfig = json.load(jsonContents)
+            self.syncConfig = json.load(jsonContents)
         if not isinstance(self._dataFile, str):
             self._dataFile = self._dataFile.name
         return self.refresh()
         
     def refresh(self):
-        self.config = DirListing(syncConfig['sync'])
+        self.config = DirListing(syncConfig['files'])
         self.source = DirListing(syncConfig['sourceDir'])
         self.dest = DirListing(syncConfig['destDir'])
         self.added = self.source.minus(self.dest)
@@ -193,7 +191,7 @@ class Data(object):
         return self
 
     def performSync(self):
-        self.toTransfer.addFiles(self.source.dirPath, self.dest.dirPath)
+        self.toTransfer.addFiles(self.source.dirPath, self.dest.dirPath, self.syncConfig['filetypes'] if filetypes in self.syncConfig else {})
         self.toRemove.removeFiles(self.dest.dirPath)
         for p in processes:
             if p.poll() is None:
