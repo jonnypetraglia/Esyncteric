@@ -167,9 +167,11 @@ class DirListing:
 
 class Data(object):
     def __init__(self, dataFile):
-        self.jsonFile = dataFile
         self._loaded = False
-        self.reload()
+        self.jsonFile = dataFile
+        self.syncConfig = dict(jsonFile=None)
+        if self.jsonFile:
+            self.reload()
         
     def reload(self):
         with open(self.jsonFile) if isinstance(self.jsonFile, str) else self.jsonFile as jsonContents: 
@@ -261,9 +263,7 @@ if args.gui:
     gui.app.setOrganizationName(AUTHOR)
     gui.app.setOrganizationDomain(AUTHOR_URL)
     gui.app.setApplicationVersion(VERSION)
-    guiapp = gui.GuiApp(DirListing)
-    if args.jsonfile:
-        guiapp.loadData(Data(args.jsonfile))
+    guiapp = gui.GuiApp(DirListing, Data(args.jsonfile))
     gui.app.exec_()
 else:
     data = Data(args.jsonfile)

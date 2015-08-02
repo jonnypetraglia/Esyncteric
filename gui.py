@@ -16,9 +16,9 @@ def appName():
 #TODO: Drag n drop support
 
 class GuiApp(QtGui.QMainWindow):
-    def __init__(self, DirListing):
+    def __init__(self, DirListing, data):
         super(GuiApp, self).__init__()
-        self.data = None
+        self.data = data
         self.DirListing = DirListing
         try:
             _fromUtf8 = QtCore.QString.fromUtf8
@@ -86,15 +86,27 @@ class GuiApp(QtGui.QMainWindow):
         self.resize(800, 600)
         self.show()
         
+        self.disableOnSync = [
+            newAction, openAction, runAction, dryRunAction, settingsAction, refreshAction, self.sourceTree, self.destinationTree
+            ]
+        
         self.red = QtCore.Qt.darkRed
         self.green = QtCore.Qt.darkGreen
         self.orange = QtCore.Qt.darkYellow
         self.default = QtCore.Qt.white
+        
+        if self.data._loaded:
+            self.loadData(self.data)
+        else:
+            self.fileNew()
+        
     
        
     def fileNew(self):
         if not self._confirmDiscardChanges():
             return event.ignore() if event else None
+        for x in self.actionsRequiringAFileBeOpen:
+            x.setEnabled(False)
         # TODO: showSettings to get initial values first for sourceDir, destinationDir, etc
     
     def fileSaveAs(self):
@@ -121,9 +133,9 @@ class GuiApp(QtGui.QMainWindow):
         filename = QtGui.QFileDialog.getOpenFileName(self, 'Open Existing Sync File', None, "JSON (*.json)")
         if not filename:
             return
-        self.data.jsonFile = filename
         self.sourceTree.clear()
         self.destinationTree.clear()
+        self.data.jsonFile = filename
         self.loadData(self.data.reload())
 
 
@@ -144,9 +156,11 @@ class GuiApp(QtGui.QMainWindow):
     def runSync(self, dry=False):
         d = self.DirListing(self.getSelected())
         self.data.refresh()
+        for x in self.disableOnSync:
+            x.setEnabled(False)
         #TODO: Disable widgets before running, add "Cancel" button somewhere (StatusBar?)
-        d.addFiles(self.data.source.dirPath, self.data.dest.dirPath, self.data.filetypes, dry)
-        d.removeFiles(self.data.dest.dirPath, dry)
+        #d.addFiles(self.data.source.dirPath, self.data.dest.dirPath, self.data.filetypes, dry)
+        #d.removeFiles(self.data.dest.dirPath, dry)
         #TODO: Progress tracking
         #TODO: Reenable widgets, show some message saying it's done
     
@@ -187,7 +201,7 @@ class GuiApp(QtGui.QMainWindow):
                     self._colorItem(parent)
 
         
-        if self.data:
+        if self.receivers(QtCore.SIGNAL("itemChanged()")) > 0:
             self.sourceTree.itemChanged.disconnect(self._clickItem)
         self.data = data
         load(self.destinationTree, data.dest.fileList, self.destinationTree)
@@ -283,7 +297,7 @@ class GuiApp(QtGui.QMainWindow):
     def _confirmDiscardChanges(self, current=None, data=None):
         if not current:
             current = self.getSelected()
-            if not self.data:
+            if not self.data._loaded:
                 return True
             data = self.data.syncConfig['files']
             
