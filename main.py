@@ -21,16 +21,17 @@ class DirListing:
             self.walkDir(self.dirPath, self.fileList)
     
     def fromJSON(self, json):
+        result = {}
         if "." in json and isinstance(json["."], list):
             files = json["."]
-            json["."] = {}
+            result["."] = {}
             for f in files:
                 splitext = os.path.splitext(f)
-                json["."][splitext[0]] = splitext[1]
+                result["."][splitext[0]] = splitext[1]
         for key, value in json.items():
             if key!=".":
-                value = self.fromJSON(value)
-        return json
+                result[key] = self.fromJSON(value)
+        return result
                 
 
     def walkDir(self, dir, files):
@@ -166,16 +167,16 @@ class DirListing:
 
 class Data(object):
     def __init__(self, dataFile):
-        self._dataFile = dataFile
+        self.jsonFile = dataFile
         self._loaded = False
         self.reload()
         
     def reload(self):
-        with open(self._dataFile) if isinstance(self._dataFile, str) else self._dataFile as jsonContents: 
+        with open(self.jsonFile) if isinstance(self.jsonFile, str) else self.jsonFile as jsonContents: 
             self.syncConfig = json.load(jsonContents)
         self.filetypes = self.syncConfig['filetypes'] if 'filetypes' in self.syncConfig else {}
-        if not isinstance(self._dataFile, str):
-            self._dataFile = self._dataFile.name
+        if not isinstance(self.jsonFile, str):
+            self.jsonFile = self.jsonFile.name
         return self.refresh()
         
     def refresh(self):
@@ -196,6 +197,21 @@ class Data(object):
         for p in processes:
             if p.poll() is None:
                 p.wait()
+    
+    def setField(self, field, value):
+        if field not in ['files', 'sourceDir', 'destDir']:
+            raise ValueError("Field error:" + field)
+        self.syncConfig[field] = DirListing(value) if field == "files" else value
+    
+    def toConfig(self):
+        output = {
+            "sourceDir": self.syncConfig['sourceDir'],
+            "destDir": self.syncConfig['destDir'],
+            "files": self.syncConfig['files'].toConfig()
+            }
+        if self.filetypes:
+            output['filetypes'] = self.filetypes
+        return json.dumps(output, sort_keys=False, indent=4, separators=(',', ': '))
 
 
 
