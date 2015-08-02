@@ -17,16 +17,17 @@ def appName():
 #TODO: "Are you sure?" when modified on: fileOpen, fileNew, quit
 
 class GuiApp(QtGui.QMainWindow):
-    def __init__(self):
+    def __init__(self, DirListing):
         super(GuiApp, self).__init__()
         self.data = None
+        self.DirListing = DirListing
         try:
             _fromUtf8 = QtCore.QString.fromUtf8
         except AttributeError:
             _fromUtf8 = lambda s: s
         self.setWindowTitle(appName())
         #TODO: Icon
-        #self.setWindowIcon(QtGui.QIcon('web.png'))
+        self.setWindowIcon(QtGui.QIcon('esoteric-154605_640.png'))
         
         def createAction(label, icon, shortcut, desc, slot):
             action = QtGui.QAction(QtGui.QIcon.fromTheme(_fromUtf8(icon)), label, self)
@@ -102,9 +103,34 @@ class GuiApp(QtGui.QMainWindow):
         #TODO: New dialog
         # showSettings to get initial values first for sourceDir, destinationDir, etc
         pass
-    def fileSave(self):
-        #TODO: Save
+    
+    def fileSaveAs(self):
+        #TODO: Save as dialog
         pass
+        
+    def getSelected(self):
+        def helper(node):
+            result = {}
+            for x in range(0, self._getChildCount(node)):
+                child = self._getChild(node, x)
+                name = child.text(0)
+                if child.childIndicatorPolicy() == QtGui.QTreeWidgetItem.ShowIndicator:
+                    res = helper(child)
+                    if res != {}:
+                        result[name] = res
+                elif child.checkState(0) == QtCore.Qt.Checked:
+                    result.setdefault('.',[]).append(name)
+            return result
+        return helper(self.sourceTree)
+    
+    def fileSave(self):
+        if not self.data._dataFile:
+            self.data._dataFile = self.fileSaveAs()
+            if not self.data._dataFile:
+                return
+        d = self.DirListing(self.getSelected())
+        print(d)
+        
     
     def showSettings(self):
         #TODO: Sync settings (CPU Cores, sourceDir, destDir, filetypes{cmd,to}
@@ -114,13 +140,17 @@ class GuiApp(QtGui.QMainWindow):
         #TODO: About
         pass
     
-    def runSync(self):
-        #TODO: Disable widgets while running, progress tracking, add "Cancel" button somewhere (StatusBar?)
-        #self.data.performSync()
-        pass
+    def runSync(self, dry=False):
+        d = self.DirListing(self.getSelected())
+        self.data.refresh()
+        #TODO: Disable widgets before running, add "Cancel" button somewhere (StatusBar?)
+        d.addFiles(self.data.source.dirPath, self.data.dest.dirPath, self.data.filetypes, dry)
+        d.removeFiles(self.data.dest.dirPath, dry)
+        #TODO: Progress tracking
+        #TODO: Reenable widgets, show some message saying it's done
     
     def dryRunSync(self):
-        #TODO: Dry run
+        self.runSync(True)
         pass
         
     def fileOpen(self):

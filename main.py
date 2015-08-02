@@ -112,7 +112,7 @@ class DirListing:
         return helper(self.fileList)
 
 
-    def addFiles(self, sourcePath, destPath, filetypes):
+    def addFiles(self, sourcePath, destPath, filetypes, dry_run=False):
         def helper(fileList, path=""):
             if "." in fileList:
                 srcDir = os.path.join(sourcePath, path)
@@ -145,7 +145,7 @@ class DirListing:
                     helper(fileList[name], os.path.join(path, name))
         return helper(self.fileList)
 
-    def removeFiles(self, destPath):
+    def removeFiles(self, destPath, dry_run=False):
         def helper(fileList, path=""):
             destDir = os.path.join(destPath, path)
             if "." in fileList:
@@ -165,7 +165,6 @@ class DirListing:
         return helper(self.fileList)
 
 class Data(object):
-    global syncConfig
     def __init__(self, dataFile):
         self._dataFile = dataFile
         self._loaded = False
@@ -174,14 +173,15 @@ class Data(object):
     def reload(self):
         with open(self._dataFile) if isinstance(self._dataFile, str) else self._dataFile as jsonContents: 
             self.syncConfig = json.load(jsonContents)
+        self.filetypes = self.syncConfig['filetypes'] if 'filetypes' in self.syncConfig else {}
         if not isinstance(self._dataFile, str):
             self._dataFile = self._dataFile.name
         return self.refresh()
         
     def refresh(self):
-        self.config = DirListing(syncConfig['files'])
-        self.source = DirListing(syncConfig['sourceDir'])
-        self.dest = DirListing(syncConfig['destDir'])
+        self.config = DirListing(self.syncConfig['files'])
+        self.source = DirListing(self.syncConfig['sourceDir'])
+        self.dest = DirListing(self.syncConfig['destDir'])
         self.added = self.source.minus(self.dest)
         self.removed = self.dest.minus(self.source)
         self.missing = self.config.minus(self.source)
@@ -190,9 +190,9 @@ class Data(object):
         self._loaded = True
         return self
 
-    def performSync(self):
-        self.toTransfer.addFiles(self.source.dirPath, self.dest.dirPath, self.syncConfig['filetypes'] if filetypes in self.syncConfig else {})
-        self.toRemove.removeFiles(self.dest.dirPath)
+    def performSync(self, dry=False):
+        self.toTransfer.addFiles(self.source.dirPath, self.dest.dirPath, s, dry)
+        self.toRemove.removeFiles(self.dest.dirPath, dry)
         for p in processes:
             if p.poll() is None:
                 p.wait()
@@ -245,7 +245,7 @@ if args.gui:
     gui.app.setOrganizationName(AUTHOR)
     gui.app.setOrganizationDomain(AUTHOR_URL)
     gui.app.setApplicationVersion(VERSION)
-    guiapp = gui.GuiApp()
+    guiapp = gui.GuiApp(DirListing)
     if args.jsonfile:
         guiapp.loadData(Data(args.jsonfile))
     gui.app.exec_()
