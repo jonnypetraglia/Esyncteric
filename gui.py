@@ -13,8 +13,6 @@ def appName():
     except:
         return app.applicationName()    
 
-#TODO: Drag n drop support
-
 class GuiApp(QtGui.QMainWindow):
     def __init__(self, DirListing, data):
         super(GuiApp, self).__init__()
@@ -84,6 +82,7 @@ class GuiApp(QtGui.QMainWindow):
         widget = QtGui.QWidget(self)
         widget.setLayout(layout)
         self.setCentralWidget(widget)
+        self.setAcceptDrops(True)
         self.resize(800, 600)
         self.show()
         
@@ -105,7 +104,7 @@ class GuiApp(QtGui.QMainWindow):
        
     def fileNew(self):
         if not self._confirmDiscardChanges():
-            return event.ignore() if event else None
+            return
         for x in self.actionsRequiringAFileBeOpen:
             x.setEnabled(False)
         # TODO: showSettings to get initial values first for sourceDir, destinationDir, etc
@@ -127,11 +126,22 @@ class GuiApp(QtGui.QMainWindow):
         # TODO: Should it call self.data.refresh()?
         #  theoretically, data.config should remain the exact same
         #  ...but is it even needed? All GuiApp uses is source,dest,filetypes, none of the calculated
+ 
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls() and len(event.mimeData().urls()) == 1:
+            event.acceptProposedAction()
         
-    def fileOpen(self):
+    def dropEvent(self, event):
+        return self.fileOpen(event)
+        
+    def fileOpen(self, event):
         if not self._confirmDiscardChanges():
-            return event.ignore() if event else None
-        filename = QtGui.QFileDialog.getOpenFileName(self, 'Open Existing Sync File', None, "JSON (*.json)")
+            return
+        
+        if event:
+            filename = event.mimeData().urls()[0].toLocalFile()
+        else:
+            filename = QtGui.QFileDialog.getOpenFileName(self, 'Open Existing Sync File', None, "JSON (*.json)")
         if not filename:
             return
         self.sourceTree.clear()
