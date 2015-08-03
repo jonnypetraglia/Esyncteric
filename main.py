@@ -22,12 +22,14 @@ class DirListing:
     
     def fromJSON(self, json):
         result = {}
-        if "." in json and isinstance(json["."], list):
-            files = json["."]
+        if "." in json:
             result["."] = {}
-            for f in files:
-                splitext = os.path.splitext(f)
-                result["."][splitext[0]] = splitext[1]
+            for f in json["."]:
+                if isinstance(json["."], list):
+                    splitext = os.path.splitext(f)
+                    result["."][splitext[0]] = splitext[1]
+                elif isinstance(json["."], dict):
+                    result["."][f] = json["."][f]
         for key, value in json.items():
             if key!=".":
                 result[key] = self.fromJSON(value)
@@ -169,7 +171,7 @@ class Data(object):
     def __init__(self, dataFile):
         self._loaded = False
         self.jsonFile = dataFile
-        self.syncConfig = dict(jsonFile=None)
+        self.syncConfig = dict(jsonFile=None, files=None)
         if self.jsonFile:
             self.reload()
         
@@ -188,13 +190,15 @@ class Data(object):
         self.added = self.source.minus(self.dest)
         self.removed = self.dest.minus(self.source)
         self.missing = self.config.minus(self.source)
-        self.toTransfer = self.config.intersection(self.added)
+        #TODO: better handling of missing files rather than just ignoring them
+        notMissing = self.config.minus(self.missing)
+        self.toTransfer = notMissing.intersection(self.added)
         self.toRemove = self.dest.minus(self.config)
         self._loaded = True
         return self
 
     def performSync(self, dry=False):
-        self.toTransfer.addFiles(self.source.dirPath, self.dest.dirPath, s, dry)
+        processes = self.toTransfer.addFiles(self.source.dirPath, self.dest.dirPath, s, dry)
         self.toRemove.removeFiles(self.dest.dirPath, dry)
         for p in processes:
             if p.poll() is None:
@@ -203,13 +207,15 @@ class Data(object):
     def setField(self, field, value):
         if field not in ['files', 'sourceDir', 'destDir']:
             raise ValueError("Field error:" + field)
-        self.syncConfig[field] = DirListing(value) if field == "files" else value
+        self.syncConfig[field] = value
+        if field=="files":
+            self.config = DirListing(self.syncConfig['files'])
     
     def toConfig(self):
         output = {
             "sourceDir": self.syncConfig['sourceDir'],
             "destDir": self.syncConfig['destDir'],
-            "files": self.syncConfig['files'].toConfig()
+            "files": self.config.toConfig()
             }
         if self.filetypes:
             output['filetypes'] = self.filetypes
@@ -269,14 +275,14 @@ else:
     data = Data(args.jsonfile)
     if args.print:
         printables = {
-            'config':   config,
-            'source':   source,
-            'dest':     dest,
-            'added':    added,
-            'removed':  removed,
-            'missing':  missing,
-            'toTransfer': toTransfer,
-            'toRemove': toRemove
+            'config':   data.config,
+            'source':   data.source,
+            'dest':     data.dest,
+            'added':    data.added,
+            'removed':  data.removed,
+            'missing':  data.missing,
+            'toTransfer': data.toTransfer,
+            'toRemove': data.toRemove
         }
         if args.print=="all":
             for p in printables:

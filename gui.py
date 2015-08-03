@@ -74,6 +74,7 @@ class GuiApp(QtGui.QMainWindow):
         self.sourceTree.sortByColumn(0, QtCore.Qt.AscendingOrder)
         self.destinationTree = QtGui.QTreeWidget()
         self.destinationTree.setHeaderLabel("Destination")
+        self.destinationTree.setSortingEnabled(True)
         self.destinationTree.sortByColumn(0, QtCore.Qt.AscendingOrder)
 
         layout = QtGui.QGridLayout()
@@ -147,7 +148,7 @@ class GuiApp(QtGui.QMainWindow):
     def refresh(self):
         self.sourceTree.clear()
         self.destinationTree.clear()
-        self.loadData(self.data.refresh())        
+        self.loadData(self.data.refresh())
     
     def showSettings(self):
         #TODO: Sync settings (CPU Cores, sourceDir, destDir, filetypes{cmd,to}
@@ -176,15 +177,14 @@ class GuiApp(QtGui.QMainWindow):
 
     def loadData(self, data):
         self.setWindowTitle(appName() + " - " + os.path.basename(data.jsonFile))
+        def createItem(text, parent, tristate=False):
+            item = QtGui.QTreeWidgetItem(parent)
+            item.setText(0, text)
+            if tristate:
+                item.setCheckState(0, QtCore.Qt.Unchecked)
+                item.setFlags(QtCore.Qt.ItemIsUserCheckable | QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsTristate)
+            return item
         def load(tree, fileList, parent, checkList={}):
-            def createItem(text, parent, tristate=False):
-                item = QtGui.QTreeWidgetItem(parent)
-                item.setText(0, text)
-                if tristate:
-                    item.setCheckState(0, QtCore.Qt.Unchecked)
-                    item.setFlags(QtCore.Qt.ItemIsUserCheckable | QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsTristate)
-                return item
-            
             for key, value in fileList.items():
                 if key==".":
                     continue
@@ -193,16 +193,15 @@ class GuiApp(QtGui.QMainWindow):
                 load(tree, value, item, checkList[key] if key in checkList else {})
             if "." in fileList:
                 for key, value in fileList["."].items():
-                    item = createItem(key, parent, tree==self.sourceTree)
+                    item = createItem(key+value, parent, tree==self.sourceTree)
                     if "." in checkList and key in checkList["."]:
                         item.setCheckState(0, QtCore.Qt.Checked)
                     self._colorItem(item)
-                if not isinstance(parent, QtGui.QTreeWidget):
-                    self._colorItem(parent)
+            if not isinstance(parent, QtGui.QTreeWidget):
+                self._colorItem(parent)
 
-        
-        if self.receivers(QtCore.SIGNAL("itemChanged()")) > 0:
-            self.sourceTree.itemChanged.disconnect(self._clickItem)
+        try: self.sourceTree.itemChanged.disconnect(self._clickItem)
+        except Exception: pass
         self.data = data
         load(self.destinationTree, data.dest.fileList, self.destinationTree)
         load(self.sourceTree, data.source.fileList, self.sourceTree, data.config.fileList)
@@ -256,41 +255,50 @@ class GuiApp(QtGui.QMainWindow):
     def _colorItem(self, item):
         def doColoring(item, destItem):
             if destItem:
+                setBg(item, self.default)
                 if item.checkState(0) == QtCore.Qt.Unchecked:
                     setBg(destItem, self.red)
                 else:
-                    setBg(item, self.default)
                     setBg(destItem, self.default)
             else:
                 if item.checkState(0) == QtCore.Qt.Unchecked:
                     setBg(item, self.default)
                 else:
                     setBg(item, self.green)
-        def getParents(item):
+                    
+        def setBg(item, bg):
+            item.setBackgroundColor(0, bg)
+            item.setTextColor(0, QtCore.Qt.black if bg == QtCore.Qt.white else QtCore.Qt.white)
+                    
+        def searchUp(item):
             parentList = []
             p = item.parent()
             while p:
                 parentList.append(p)
                 p = p.parent()
             parentList.reverse()
+            parentList.append(item)
             return parentList
-        def setBg(item, bg):
-            item.setBackgroundColor(0, bg)
-            item.setTextColor(0, QtCore.Qt.black if bg == QtCore.Qt.white else QtCore.Qt.white)
-        parents = getParents(item)
-        parents.append(item)
-        destParents = []
-        destSearch = self.destinationTree
-        for p in parents:
-            destSearch = self._findChild(destSearch, p.text(0))
-            if not destSearch:
-                break
-            destParents.append(destSearch)
-        for x in range(0, len(parents)):
-            doColoring(parents[x], destParents[x] if x < len(destParents) else None)
+        
+        searchText = item.text(0)
+        
+        def searchDown(item, searchPath):
+            searchItems = []
+            for p in searchPath:
+                item = self._findChild(item, p.text(0))
+                if not item:
+                    break
+                searchItems.append(item)
+            return searchItems
+        
+        sourceItems = searchUp(item) # Here we go up the sourceTree to get the parents of the item
+        destItems = searchDown(self.destinationTree, sourceItems) # Here we go down the destinationTree as far as we can
+        for x in range(0, len(sourceItems)):
+            doColoring(sourceItems[x], destItems[x] if x < len(destItems) else None)
             
     def _clickItem(self, item):
-        self.sourceTree.itemChanged.disconnect(self._clickItem)
+        try: self.sourceTree.itemChanged.disconnect(self._clickItem)
+        except Exception: pass
         self._colorItem(item)
         self.sourceTree.itemChanged.connect(self._clickItem)
         
