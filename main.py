@@ -1,10 +1,14 @@
 # encoding: utf-8
 import json, os, subprocess, shutil, multiprocessing, argparse
+from concurrent.futures import ProcessPoolExecutor as Pool
+
 
 APP_NAME = "Esyncteric"
 VERSION = "0.0.1"
 AUTHOR = "Qweex LLC"
 AUTHOR_URL = "qweex.com"
+
+#http://stackoverflow.com/questions/25120363/python-multiprocessing-execute-external-command-and-wait-before-proceeding
 
 
 class DirListing:
@@ -114,8 +118,33 @@ class DirListing:
             return result
         return helper(self.fileList)
 
+    def _call_proc(self, cmd):
+        """ This runs in a separate thread. """
+        print("Calling", cmd)
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        out, err = p.communicate()
+        return (out, err)
 
-    def addFiles(self, sourcePath, destPath, filetypes, dry_run=False):
+
+    def addFiles(self, sourcePath, destPath, filetypes, callback, dry_run=False):
+        def asdf(signal, frame):
+            #print("!!!!!!!!!!!!", signal, frame)
+            import sys
+            for p in pending:
+                print("Canceling", p.running(), p.src)
+                remove = p.running()
+                try: print("Canceled?", p.cancel())
+                except Exception: pass
+                if remove:
+                    filePath = os.path.join(destPath, p.dest)
+                    if os.path.exists(filePath):
+                        os.remove(filePath)
+            sys.exit(0)
+        import signal
+        signal.signal(signal.SIGINT, asdf) #SIG_DFL
+        #signal.signal(signal.SIGINT, signal.SIG_DFL)
+        pool = Pool(max_workers=max_processes)
+        pending = []
         def helper(fileList, path=""):
             if "." in fileList:
                 srcDir = os.path.join(sourcePath, path)
@@ -139,14 +168,20 @@ class DirListing:
                     if dry_run:
                         print("CONVERT:", os.path.join(path, name + ext), "->", os.path.join(path, name + filetype['to']))
                     else:
-                        processes.add(subprocess.check_call(cmd, stdout=subprocess.DEVNULL))
-                        if len(processes) >= max_processes:
-                            os.wait()
-                            processes.difference_update([p for p in processes if p.poll() is not None])
+                        filename = os.path.join(path, name + ext)
+                        print("Adding", filename)
+                        future = pool.submit(self._call_proc, cmd)
+                        future.src = filename
+                        future.dest = os.path.join(path, name + filetype['to'])
+                        future.cmd = cmd
+                        future.add_done_callback(callback)
+                        pending.append(future)
             for name in fileList:
                 if name != ".":
                     helper(fileList[name], os.path.join(path, name))
-        return helper(self.fileList)
+        helper(self.fileList)
+        #pool.shutdown(True)
+        return pool, pending
 
     def removeFiles(self, destPath, dry_run=False):
         def helper(fileList, path=""):
@@ -196,13 +231,20 @@ class Data(object):
         self.toRemove = self.dest.minus(self.config)
         self._loaded = True
         return self
+    
+    def callback(self, future):
+        try:
+            print("Callback", future.dest, future.result())
+        except Exception:
+            print("EXCEPTION!")
 
     def performSync(self, dry=False):
-        processes = self.toTransfer.addFiles(self.source.dirPath, self.dest.dirPath, s, dry)
+        pool, pending = self.toTransfer.addFiles(self.source.dirPath, self.dest.dirPath, self.filetypes, self.callback, dry)
         self.toRemove.removeFiles(self.dest.dirPath, dry)
-        for p in processes:
-            if p.poll() is None:
-                p.wait()
+        print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+        for result in pending:
+            out, err = result.result()
+            #print("out: {} err: {}".format(out, err))
     
     def setField(self, field, value):
         if field not in ['files', 'sourceDir', 'destDir']:
@@ -255,7 +297,6 @@ if args.gui is False and args.jsonfile is None:
 
 
 
-processes = set()
 max_processes = args.concurrent
 dry_run = args.dry
 

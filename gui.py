@@ -2,8 +2,6 @@ import PyQt4.QtGui as QtGui
 import PyQt4.QtCore as QtCore
 
 import os
-import signal
-signal.signal(signal.SIGINT, signal.SIG_DFL)
 
 app = QtGui.QApplication([])
 
@@ -56,10 +54,12 @@ class GuiApp(QtGui.QMainWindow):
         syncMenu.addAction(settingsAction)
         
         refreshAction = createAction("&Refresh", "view-refresh", "Ctrl+R", 'Rescan the source and destination directories', self.refresh)
-        aboutAction = createAction("&About", "help-about", None, 'About %s' % appName(), self.about)
+        aboutAction = createAction("&About %s" % appName() , "help-about", None, 'About %s' % appName(), self.about)
+        aboutQtAction = createAction("About &Qt", "help-about", None, 'About Qt', self.aboutQt)
         toolMenu = menubar.addMenu('&Tools')
         toolMenu.addAction(refreshAction)
         toolMenu.addAction(aboutAction)
+        toolMenu.addAction(aboutQtAction)
         
         
         self.actionsRequiringAFileBeOpen = [
@@ -144,10 +144,17 @@ class GuiApp(QtGui.QMainWindow):
             filename = QtGui.QFileDialog.getOpenFileName(self, 'Open Existing Sync File', None, "JSON (*.json)")
         if not filename:
             return
-        self.sourceTree.clear()
-        self.destinationTree.clear()
-        self.data.jsonFile = filename
-        self.loadData(self.data.reload())
+        oldFilename = self.data.jsonFile
+        try:
+            self.data.jsonFile = filename
+            self.data.reload()
+            self.sourceTree.clear()
+            self.destinationTree.clear()
+            self.loadData(self.data)
+        except ValueError:
+            print("DANGER WILL ROBINSON")
+            self.data.jsonFile = oldFilename
+            QtGui.QMessageBox.critical(self, "Error loading file", "File is not valid JSON")
 
 
     def closeEvent(self, event):
@@ -169,9 +176,10 @@ class GuiApp(QtGui.QMainWindow):
         self.data.refresh()
         for x in self.disableOnSync:
             x.setEnabled(False)
+        
         #TODO: Disable widgets before running, add "Cancel" button somewhere (StatusBar?)
-        #d.addFiles(self.data.source.dirPath, self.data.dest.dirPath, self.data.filetypes, dry)
-        #d.removeFiles(self.data.dest.dirPath, dry)
+        processes = d.addFiles(self.data.source.dirPath, self.data.dest.dirPath, self.data.filetypes, dry)
+        d.removeFiles(self.data.dest.dirPath, dry)
         #TODO: Progress tracking
         #TODO: Reenable widgets, show some message saying it's done
     
@@ -183,6 +191,9 @@ class GuiApp(QtGui.QMainWindow):
         message = app.organizationName() + "\n" + app.organizationDomain()
         #TODO: About
         QtGui.QMessageBox.about(self, appName() + " " + app.applicationVersion(), message)
+        
+    def aboutQt(self):
+        QtGui.QMessageBox.aboutQt(self, appName() + " " + app.applicationVersion())
 
 
     def loadData(self, data):
@@ -327,15 +338,19 @@ class GuiApp(QtGui.QMainWindow):
             return changesFound()
         for key in current:
             if type(current[key]) != type(data[key]):
+                print("Found changes on type mismatch", type(current[key]), type(data[key]))
                 return changesFound()
             if isinstance(current[key], dict):
-                if not self._confirmDiscardChanges(current[key], data[key]):
-                    print("Recursed on", key, "and found changes")
-                    return False # Child already showed dialog and got a no
+                childResult = self._confirmDiscardChanges(current[key], data[key])
+                if childResult!=None:
+                    print("Recursed on", key, " child and found changes")
+                    return childResult # Child already showed dialog and got a no
             elif isinstance(current[key], list):
                 if set(current[key]) != set(data[key]):
+                    print("Found changes on diff", set(current[key]) - set(data[key]), set(data[key]) - set(current[key]))
                     return changesFound()
             else:
                 if current[key] != data[key]:
+                    print("Found changes on value", current[key], data[key])
                     return changesFound()
-        return True # No changes, simulate a "yes"
+        return None # No changes, simulate a "yes"
