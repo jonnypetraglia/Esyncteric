@@ -12,6 +12,9 @@ class DirListing:
         return json.dumps(self.fileList, sort_keys=True, indent=4, separators=(',', ': '))
     
     def __init__(self, dirPath):
+        if not dirPath:
+            self.fileList = {}
+            return
         if isinstance(dirPath, dict):
             self.dirPath = None
             self.fileList = self.fromJSON(dirPath)
@@ -133,9 +136,9 @@ class DirListing:
                         continue
                     filetype = filetypes[ext.lower()]
                     cmd = list(filetype['cmd'])
-                    cmd[cmd.index(None)] = os.path.join(srcDir, name + ext)
-                    if None in cmd:
-                        cmd[cmd.index(None)] = os.path.join(destDir, name + filetype['to'])
+                    cmd[cmd.index("$1")] = os.path.join(srcDir, name + ext)
+                    if "$2" in cmd:
+                        cmd[cmd.index("$2")] = os.path.join(destDir, name + filetype['to'])
                     if dry_run:
                         print("CONVERT:", os.path.join(path, name + ext), "->", os.path.join(path, name + filetype['to']))
                     else:
@@ -174,17 +177,26 @@ class Data(object):
         self.syncConfig = dict(jsonFile=None, files=None)
         if self.jsonFile:
             self.reload()
+        else:
+            self.original = None
         
     def reload(self):
-        with open(self.jsonFile) if isinstance(self.jsonFile, str) else self.jsonFile as jsonContents: 
-            self.syncConfig = json.load(jsonContents)
+        if self.jsonFile:
+            with open(self.jsonFile) if isinstance(self.jsonFile, str) else self.jsonFile as jsonContents: 
+                self.syncConfig = json.load(jsonContents)
+            if not isinstance(self.jsonFile, str):
+                self.jsonFile = self.jsonFile.name
+        self.original = {
+            'sourceDir': self.getField('sourceDir'),
+            'destDir': self.getField('destDir'),
+            'files': self.getField('files'),
+            'filetypes': self.getField('filetypes')
+        }
         self.filetypes = self.syncConfig['filetypes'] if 'filetypes' in self.syncConfig else {}
-        if not isinstance(self.jsonFile, str):
-            self.jsonFile = self.jsonFile.name
         return self.refresh()
         
     def refresh(self):
-        self.config = DirListing(self.syncConfig['files'])
+        self.config = DirListing(self.syncConfig['files'] if 'files' in self.syncConfig else dict())
         self.source = DirListing(self.syncConfig['sourceDir'])
         self.dest = DirListing(self.syncConfig['destDir'])
         self.added = self.source.minus(self.dest)
@@ -205,11 +217,16 @@ class Data(object):
                 p.wait()
     
     def setField(self, field, value):
-        if field not in ['files', 'sourceDir', 'destDir']:
+        if field not in ['files', 'sourceDir', 'destDir', 'filetypes']:
             raise ValueError("Field error:" + field)
         self.syncConfig[field] = value
         if field=="files":
             self.config = DirListing(self.syncConfig['files'])
+
+    def getField(self, field):
+        if field in self.syncConfig:
+            return self.syncConfig[field]
+        return {}
     
     def toConfig(self):
         output = {
@@ -221,6 +238,17 @@ class Data(object):
             output['filetypes'] = self.filetypes
         return json.dumps(output, sort_keys=False, indent=4, separators=(',', ': '))
 
+    def hasChanged(self):
+        if not self.original:
+            return False
+        for key in self.original:
+            if key == "gui" or key == "files":
+                continue
+            if key not in self.syncConfig or self.original[key] != self.syncConfig[key]:
+                print(key + " has changed, ", self.original[key])
+                return True
+        print("No change")
+        return False
 
 
 def printj(j):
