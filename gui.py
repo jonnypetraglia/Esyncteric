@@ -100,13 +100,46 @@ class GuiApp(QtGui.QMainWindow):
             self.fileNew()
         
     
+    def guiConfig(self, key):
+        if key in self.data.getField('gui'):
+            return self.data.getField('gui')[key]
+        return None
+
+    def updateSettings(self, newValues):
+        err = None
+        if not os.path.exists(newValues['sourceDir']):
+            err = "sourceDir does not exist"
+        elif not os.path.isdir(newValues['sourceDir']):
+            err = "sourceDir is not a directory"
+        elif not os.path.exists(newValues['destDir']):
+            err = "destDir does not exist"
+        elif not os.path.isdir(newValues['destDir']):
+            err = "destDir is not a directory"
+        else:
+            if newValues['sourceDir'] != self.data.getField('sourceDir'):
+                self.data.setField('files', None)
+            for key, value in newValues.items():
+                self.data.setField(key, value)
+            self.refresh()
+            return True
+
+        QtGui.QMessageBox.critical(self, "Error", err)
+        return False
        
     def fileNew(self):
         if not self._confirmDiscardChanges():
-            return
-        for x in self.actionsRequiringAFileBeOpen:
-            x.setEnabled(False)
-        # TODO: showSettings to get initial values first for sourceDir, destinationDir, etc
+            return       
+        def then():
+            for x in self.actionsRequiringAFileBeOpen:
+                x.setEnabled(True)
+            self.data.jsonFile = None
+            self.data.reload()
+            self.loadData()
+            pass
+
+        settingsDialog = SettingsDialog(self, self.updateSettings, None)
+        settingsDialog.accepted.connect(then)
+        settingsDialog.exec()
     
     def fileSaveAs(self):
         filename = QtGui.QFileDialog.getSaveFileName(self, 'Save sync config', "", '*.json')
@@ -158,6 +191,9 @@ class GuiApp(QtGui.QMainWindow):
         self.loadData()
     
     def showSettings(self):
+        settingsDialog = SettingsDialog(self, self.updateSettings, self.data.syncConfig)
+        #settingsDialog.accepted.connect(then)
+        settingsDialog.exec()
         #TODO: Sync settings (CPU Cores, sourceDir, destDir, filetypes{cmd,to}
         pass
     
@@ -227,9 +263,8 @@ class GuiApp(QtGui.QMainWindow):
 
         try: self.sourceTree.itemChanged.disconnect(self._clickItem)
         except Exception: pass
-        self.data = data
-        load(self.destinationTree, data.dest.fileList, self.destinationTree)
-        load(self.sourceTree, data.source.fileList, self.sourceTree, data.config.fileList)
+        load(self.destinationTree, self.data.dest.fileList, self.destinationTree)
+        load(self.sourceTree, self.data.source.fileList, self.sourceTree, self.data.config.fileList)
         for action in self.actionsRequiringAFileBeOpen:
             action.setEnabled(True)
         self.sourceTree.itemChanged.connect(self._clickItem)
@@ -354,3 +389,101 @@ class GuiApp(QtGui.QMainWindow):
                 if current[key] != data[key]:
                     return changesFound()
         return True # No changes, simulate a "yes"
+class SettingsDialog(QtGui.QDialog):
+    def __init__(self, parent, validationFunc, initialData):
+        super(SettingsDialog, self).__init__(parent)
+        self.validation = validationFunc
+        self.initUI(initialData)
+
+
+    def srcBrowse(self):
+        chosen = QtGui.QFileDialog.getExistingDirectory(self, "Select source folder", None, QtGui.QFileDialog.ShowDirsOnly)
+        if not chosen:
+            return
+        self.srcDir.setText(chosen)
+
+    def destBrowse(self):
+        chosen = QtGui.QFileDialog.getExistingDirectory(self, "Select destination folder", None, QtGui.QFileDialog.ShowDirsOnly)
+        if not chosen:
+            return
+        self.destDir.setText(chosen)
+
+    def performValidate(self):
+        vals = {
+            self.srcDir.objectName(): self.srcDir.text(),
+            self.destDir.objectName(): self.destDir.text()
+        }
+        if self.validation(vals):
+            self.accept();
+
+    def initUI(self, data):
+        self.setWindowIcon(QtGui.QIcon())
+        layout = QtGui.QGridLayout()
+        self.srcDir = QtGui.QLineEdit()
+        self.destDir = QtGui.QLineEdit()
+        self.filetypes = QtGui.QTreeWidget()
+        self.filetypes.setColumnCount(2)
+        self.filetypes.setHeaderLabels(["ext", "cmd"])
+
+        self.srcDir.setObjectName("sourceDir")
+        self.destDir.setObjectName("destDir")
+        self.filetypes.setObjectName("filetypes")
+        row = 0
+
+        # Init the data
+        if data:
+            if self.srcDir.objectName() in data:
+                self.srcDir.setText(data[self.srcDir.objectName()])
+            if self.srcDir.objectName() in data:
+                self.destDir.setText(data[self.destDir.objectName()])
+            if self.filetypes.objectName() in data:
+                for f in data[self.filetypes.objectName()]:
+                    i = QtGui.QTreeWidgetItem([f, " ".join(data[self.filetypes.objectName()][f])])
+                    i.setFlags(i.flags() | QtCore.Qt.ItemIsEditable)
+                    self.filetypes.addTopLevelItem(i)
+            if 'jsonFile' in data and data['jsonFile']:
+                self.setWindowTitle("Sync Settings")
+        else:
+            self.setWindowTitle("New Settings")
+
+        # Source
+        srcDirTxt = QtGui.QLabel("Source Directory")
+        srcDirBtn = QtGui.QPushButton("…")
+        srcDirBtn.clicked.connect(self.srcBrowse);
+        srcDirBtn.setAutoDefault(False);
+        layout.addWidget(srcDirTxt, row, 0)
+        layout.addWidget(self.srcDir, row, 1)
+        layout.addWidget(srcDirBtn, row, 2)
+        row+=1
+
+        # Destination
+        destDirTxt = QtGui.QLabel("Destination Directory")
+        destDirBtn = QtGui.QPushButton("…")
+        destDirBtn.clicked.connect(self.destBrowse);
+        destDirBtn.setAutoDefault(False);
+        layout.addWidget(destDirTxt, row, 0)
+        layout.addWidget(self.destDir, row, 1)
+        layout.addWidget(destDirBtn, row, 2)
+        row+=1
+
+        # Filetypes
+        filetypesTxt = QtGui.QLabel("Filetypes")
+        layout.addWidget(filetypesTxt, row, 0)
+        layout.addWidget(self.filetypes, row, 1)
+        row+=1
+
+        # TODO: GUI section [filenameFilter, hideEmpty]
+
+        # Save / Cancel
+        buttonBox = QtGui.QDialogButtonBox()
+        saveBtn = buttonBox.addButton(QtGui.QDialogButtonBox.Save)
+        cancelBtn = buttonBox.addButton(QtGui.QDialogButtonBox.Cancel)
+        saveBtn.clicked.connect(self.performValidate)
+        cancelBtn.clicked.connect(self.reject)
+        layout.addWidget(buttonBox, row, 1)
+        row+=1
+
+        # Finish
+        layout.setColumnMinimumWidth(1, 300)
+        self.setLayout(layout)
+
