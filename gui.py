@@ -97,8 +97,9 @@ class GuiApp(QtGui.QMainWindow):
         if self.data._loaded:
             self.loadData()
         else:
-            self.fileNew()
-        
+            for x in self.actionsRequiringAFileBeOpen:
+                x.setEnabled(False)
+
     
     def guiConfig(self, key):
         if key in self.data.getField('gui'):
@@ -153,6 +154,7 @@ class GuiApp(QtGui.QMainWindow):
         outputFile = QtCore.QFile(self.data.jsonFile);
         outputFile.open(QtCore.QFile.WriteOnly | QtCore.QFile.Truncate);
         self.data.setField('files', self.getSelected())
+        self.data.originalDirs = {"sourceDir": self.data.getField('sourceDir'), "destDir": self.data.getField('destDir')}
         outputFile.write(self.data.toConfig())
         outputFile.resize(outputFile.pos())
         # TODO: Should it call self.data.refresh()?
@@ -363,32 +365,41 @@ class GuiApp(QtGui.QMainWindow):
         self.sourceTree.itemChanged.connect(self._clickItem)
         
     def _confirmDiscardChanges(self, current=None, data=None):
-        if not current:
-            current = self.getSelected()
-            if not self.data._loaded:
-                return True
-            data = self.data.syncConfig['files']
-            
         def changesFound():
             reply = QtGui.QMessageBox.question(self, 'Message', 
                      "Are you sure you want to discard any unsaved changes?", QtGui.QMessageBox.Yes, QtGui.QMessageBox.No)
             return reply == QtGui.QMessageBox.Yes
-        if set(current.keys()) != set(data.keys()):
+
+        if self.data.hasChanged():
             return changesFound()
-        for key in current:
-            if type(current[key]) != type(data[key]):
+
+        if not self.data._loaded or not self.data.getField('files'):
+            return True
+
+        def helper(current, data):
+            if not data:
+                return True
+                
+            if set(current.keys()) != set(data.keys()):
                 return changesFound()
-            if isinstance(current[key], dict):
-                if not self._confirmDiscardChanges(current[key], data[key]):
-                    print("Recursed on", key, "and found changes")
-                    return False # Child already showed dialog and got a no
-            elif isinstance(current[key], list):
-                if set(current[key]) != set(data[key]):
+            for key in current:
+                if type(current[key]) != type(data[key]):
                     return changesFound()
-            else:
-                if current[key] != data[key]:
-                    return changesFound()
-        return True # No changes, simulate a "yes"
+                if isinstance(current[key], dict):
+                    if not helper(current[key], data[key]):
+                        print("Recursed on", key, "and found changes")
+                        return False # Child already showed dialog and got a no
+                elif isinstance(current[key], list):
+                    if set(current[key]) != set(data[key]):
+                        return changesFound()
+                else:
+                    if current[key] != data[key]:
+                        return changesFound()
+            return True # No changes, simulate a "yes"
+
+        return helper(self.getSelected(), self.data.getField('files'))
+
+
 class SettingsDialog(QtGui.QDialog):
     def __init__(self, parent, validationFunc, initialData):
         super(SettingsDialog, self).__init__(parent)
