@@ -1,29 +1,52 @@
 import PyQt4.QtGui as QtGui
 import PyQt4.QtCore as QtCore
 
-import os
-import signal
-signal.signal(signal.SIGINT, signal.SIG_DFL)
-import re
+import os, re, signal, sys
 
-app = QtGui.QApplication([])
+DirListing = None
 
-def appName():
-    try:
-        return app.applicationDisplayName()
-    except:
-        return app.applicationName()    
 
-class GuiApp(QtGui.QMainWindow):
-    def __init__(self, DirListing, data):
-        super(GuiApp, self).__init__()
+class GuiApp(QtGui.QApplication):
+    def __init__(self, APP_NAME, AUTHOR, AUTHOR_URL, VERSION, _DIRLISTING, data):
+        super(GuiApp, self).__init__([])
+        try:
+            self.setApplicationDisplayName(APP_NAME)
+        except:
+            self.setApplicationName(APP_NAME)
+        self.setOrganizationName(AUTHOR)
+        self.setOrganizationDomain(AUTHOR_URL)
+        self.setApplicationVersion(VERSION)
+
+        DirListing = _DIRLISTING
+        self.window = GuiWindow(self, data)
+
+        signal.signal(signal.SIGINT, self.terminate)
+
+        timer = QtCore.QTimer()
+        timer.start(500)  # You may change this if you wish.
+        timer.timeout.connect(lambda: None)  # Let the interpreter run each 500 ms.
+        sys.exit(self.exec_())
+
+    def name(self):
+        try:
+            return self.applicationDisplayName()
+        except:
+            return self.applicationName()
+
+    def terminate(self, signum, frame):
+        self.window.close()
+        # self.quit()
+
+class GuiWindow(QtGui.QMainWindow):
+    def __init__(self, guiApp, data):
+        super(GuiWindow, self).__init__()
+        self.app = guiApp
         self.data = data
-        self.DirListing = DirListing
         try:
             _fromUtf8 = QtCore.QString.fromUtf8
         except AttributeError:
             _fromUtf8 = lambda s: s
-        self.setWindowTitle(appName())
+        self.setWindowTitle(self.app.name())
         self.setWindowIcon(QtGui.QIcon('esoteric-154605_640.png'))
         
         def createAction(label, icon, shortcut, desc, slot):
@@ -58,7 +81,7 @@ class GuiApp(QtGui.QMainWindow):
         syncMenu.addAction(settingsAction)
         
         refreshAction = createAction("&Refresh", "view-refresh", "Ctrl+R", 'Rescan the source and destination directories', self.refresh)
-        aboutAction = createAction("&About", "help-about", None, 'About %s' % appName(), self.about)
+        aboutAction = createAction("&About", "help-about", None, 'About %s' % self.app.name(), self.about)
         toolMenu = menubar.addMenu('&Tools')
         toolMenu.addAction(refreshAction)
         toolMenu.addAction(aboutAction)
@@ -159,7 +182,7 @@ class GuiApp(QtGui.QMainWindow):
         outputFile.resize(outputFile.pos())
         # TODO: Should it call self.data.refresh()?
         #  theoretically, data.config should remain the exact same
-        #  ...but is it even needed? All GuiApp uses is source,dest,filetypes, none of the calculated
+        #  ...but is it even needed? All GuiWindow uses is source,dest,filetypes, none of the calculated
  
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls() and len(event.mimeData().urls()) == 1:
@@ -184,6 +207,7 @@ class GuiApp(QtGui.QMainWindow):
 
 
     def closeEvent(self, event):
+        print("WEEE")
         if not self._confirmDiscardChanges():
             return event.ignore() if event else None
         QtGui.qApp.quit()
@@ -203,7 +227,7 @@ class GuiApp(QtGui.QMainWindow):
         pass
     
     def runSync(self, dry=False):
-        d = self.DirListing(self.getSelected())
+        d = DirListing(self.getSelected())
         self.data.refresh()
         for x in self.disableOnSync:
             x.setEnabled(False)
@@ -218,18 +242,18 @@ class GuiApp(QtGui.QMainWindow):
         pass
 
     def about(self):
-        message = app.organizationName() + "\n" + app.organizationDomain()
+        message = self.app.organizationName() + "\n" + self.app.organizationDomain()
         #TODO: About
-        QtGui.QMessageBox.about(self, appName() + " " + app.applicationVersion(), message)
+        QtGui.QMessageBox.about(self, self.app.name() + " " + self.app.applicationVersion(), message)
 
 
     def loadData(self):
         self.sourceTree.clear()
         self.destinationTree.clear()
         if self.data.jsonFile:
-            self.setWindowTitle(appName() + " - " + os.path.basename(self.data.jsonFile))
+            self.setWindowTitle(self.app.name() + " - " + os.path.basename(self.data.jsonFile))
         else:
-            self.setWindowTitle(appName() + " - New File") 
+            self.setWindowTitle(self.app.name() + " - New File") 
         def createItem(text, parent, tristate=False):
             item = QtGui.QTreeWidgetItem()
             item.setText(0, text)
@@ -250,6 +274,7 @@ class GuiApp(QtGui.QMainWindow):
                 load(tree, value, item, checkList[key] if key in checkList else {})
             if "." in fileList:
                 for key, value in fileList["."].items():
+                    # TODO: Better handling of filenameFilter if it is checked
                     ffilter = self.guiConfig('filenameFilter');
                     if ffilter:
                         if not ffilter.endswith("$"):
@@ -260,6 +285,7 @@ class GuiApp(QtGui.QMainWindow):
                     if "." in checkList and key in checkList["."]:
                         item.setCheckState(0, QtCore.Qt.Checked)
                     self._colorItem(item)
+            self.app.processEvents()
             if not isinstance(parent, QtGui.QTreeWidget):
                 if self.guiConfig('hideEmpty') and self._getChildCount(parent) == 0:
                     (parent.parent() or tree.invisibleRootItem()).removeChild(parent)

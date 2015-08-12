@@ -294,15 +294,13 @@ dry_run = args.dry
 
 if args.gui:
     import gui
-    try:
-        gui.app.setApplicationDisplayName(APP_NAME)
-    except:
-        gui.app.setApplicationName(APP_NAME)
-    gui.app.setOrganizationName(AUTHOR)
-    gui.app.setOrganizationDomain(AUTHOR_URL)
-    gui.app.setApplicationVersion(VERSION)
-    guiapp = gui.GuiApp(DirListing, Data(args.jsonfile))
-    gui.app.exec_()
+    gui.GuiApp(
+        APP_NAME,
+        AUTHOR,
+        AUTHOR_URL,
+        VERSION,
+        DirListing,
+        Data(args.jsonfile))
 else:
     data = Data(args.jsonfile)
     if args.print:
