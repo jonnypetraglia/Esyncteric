@@ -4,6 +4,7 @@ import PyQt4.QtCore as QtCore
 import os
 import signal
 signal.signal(signal.SIGINT, signal.SIG_DFL)
+import re
 
 app = QtGui.QApplication([])
 
@@ -203,12 +204,21 @@ class GuiApp(QtGui.QMainWindow):
                 load(tree, value, item, checkList[key] if key in checkList else {})
             if "." in fileList:
                 for key, value in fileList["."].items():
+                    ffilter = self.guiConfig('filenameFilter');
+                    if ffilter:
+                        if not ffilter.endswith("$"):
+                            ffilter = ffilter + "$"
+                        if not re.search(ffilter, key+value):
+                            continue
                     item = createItem(key+value, parent, tree==self.sourceTree)
                     if "." in checkList and key in checkList["."]:
                         item.setCheckState(0, QtCore.Qt.Checked)
                     self._colorItem(item)
             if not isinstance(parent, QtGui.QTreeWidget):
-                self._colorItem(parent)
+                if self.guiConfig('hideEmpty') and self._getChildCount(parent) == 0:
+                    (parent.parent() or tree.invisibleRootItem()).removeChild(parent)
+                else:
+                    self._colorItem(parent)
 
         try: self.sourceTree.itemChanged.disconnect(self._clickItem)
         except Exception: pass
