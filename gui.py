@@ -95,7 +95,7 @@ class GuiApp(QtGui.QMainWindow):
         self.default = QtCore.Qt.white
         
         if self.data._loaded:
-            self.loadData(self.data)
+            self.loadData()
         else:
             self.fileNew()
         
@@ -143,10 +143,9 @@ class GuiApp(QtGui.QMainWindow):
             filename = QtGui.QFileDialog.getOpenFileName(self, 'Open Existing Sync File', None, "JSON (*.json)")
         if not filename:
             return
-        self.sourceTree.clear()
-        self.destinationTree.clear()
         self.data.jsonFile = filename
-        self.loadData(self.data.reload())
+        self.data.reload()
+        self.loadData()
 
 
     def closeEvent(self, event):
@@ -155,9 +154,8 @@ class GuiApp(QtGui.QMainWindow):
         QtGui.qApp.quit()
     
     def refresh(self):
-        self.sourceTree.clear()
-        self.destinationTree.clear()
-        self.loadData(self.data.refresh())
+        self.data.refresh()
+        self.loadData()
     
     def showSettings(self):
         #TODO: Sync settings (CPU Cores, sourceDir, destDir, filetypes{cmd,to}
@@ -184,14 +182,23 @@ class GuiApp(QtGui.QMainWindow):
         QtGui.QMessageBox.about(self, appName() + " " + app.applicationVersion(), message)
 
 
-    def loadData(self, data):
-        self.setWindowTitle(appName() + " - " + os.path.basename(data.jsonFile))
+    def loadData(self):
+        self.sourceTree.clear()
+        self.destinationTree.clear()
+        if self.data.jsonFile:
+            self.setWindowTitle(appName() + " - " + os.path.basename(self.data.jsonFile))
+        else:
+            self.setWindowTitle(appName() + " - New File") 
         def createItem(text, parent, tristate=False):
-            item = QtGui.QTreeWidgetItem(parent)
+            item = QtGui.QTreeWidgetItem()
             item.setText(0, text)
             if tristate:
                 item.setCheckState(0, QtCore.Qt.Unchecked)
                 item.setFlags(QtCore.Qt.ItemIsUserCheckable | QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsTristate)
+            if isinstance(parent, QtGui.QTreeWidget):
+                parent.invisibleRootItem().addChild(item)
+            else:
+                parent.addChild(item)
             return item
         def load(tree, fileList, parent, checkList={}):
             for key, value in fileList.items():
