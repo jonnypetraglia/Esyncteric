@@ -179,6 +179,15 @@ class Data(object):
             self.reload()
         else:
             self.original = None
+
+    def resetOriginals(self):
+        self.original = {
+            'sourceDir': self.getField('sourceDir'),
+            'destDir': self.getField('destDir'),
+            'files': self.getField('files'),
+            'filetypes': self.getField('filetypes')
+        }
+        return self
         
     def reload(self):
         if self.jsonFile:
@@ -186,12 +195,7 @@ class Data(object):
                 self.syncConfig = json.load(jsonContents)
             if not isinstance(self.jsonFile, str):
                 self.jsonFile = self.jsonFile.name
-        self.original = {
-            'sourceDir': self.getField('sourceDir'),
-            'destDir': self.getField('destDir'),
-            'files': self.getField('files'),
-            'filetypes': self.getField('filetypes')
-        }
+        self.resetOriginals()
         self.filetypes = self.syncConfig['filetypes'] if 'filetypes' in self.syncConfig else {}
         return self.refresh()
         

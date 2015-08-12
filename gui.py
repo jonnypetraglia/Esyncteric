@@ -134,7 +134,7 @@ class GuiApp(QtGui.QMainWindow):
             for x in self.actionsRequiringAFileBeOpen:
                 x.setEnabled(True)
             self.data.jsonFile = None
-            self.data.reload()
+            self.data.resetOriginals().refresh()
             self.loadData()
             pass
 
@@ -193,8 +193,11 @@ class GuiApp(QtGui.QMainWindow):
         self.loadData()
     
     def showSettings(self):
+        def then():
+            self.data.refresh()
+            self.loadData()
         settingsDialog = SettingsDialog(self, self.updateSettings, self.data.syncConfig)
-        #settingsDialog.accepted.connect(then)
+        settingsDialog.accepted.connect(then)
         settingsDialog.exec()
         #TODO: Sync settings (CPU Cores, sourceDir, destDir, filetypes{cmd,to}
         pass
@@ -487,7 +490,10 @@ class SettingsDialog(QtGui.QDialog):
 
         # Save / Cancel
         buttonBox = QtGui.QDialogButtonBox()
-        saveBtn = buttonBox.addButton(QtGui.QDialogButtonBox.Save)
+        if data:
+            saveBtn = buttonBox.addButton(QtGui.QDialogButtonBox.Save)
+        else:
+            saveBtn = buttonBox.addButton(QtGui.QDialogButtonBox.Ok)
         cancelBtn = buttonBox.addButton(QtGui.QDialogButtonBox.Cancel)
         saveBtn.clicked.connect(self.performValidate)
         cancelBtn.clicked.connect(self.reject)
