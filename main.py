@@ -40,6 +40,8 @@ class DirListing:
                 
 
     def walkDir(self, dir, files):
+        if not os.path.exists(dir):
+            return
         for f in os.listdir(dir):
             if os.path.isfile(os.path.join(dir, f)):
                 files.setdefault('.',{})
@@ -123,7 +125,7 @@ class DirListing:
             if "." in fileList:
                 srcDir = os.path.join(sourcePath, path)
                 destDir = os.path.join(destPath, path)
-                if not os.path.isdir(destDir):
+                if not os.path.isdir(destDir) and not dry_run:
                     os.makedirs(destDir)
                 for name, ext in fileList["."].items():
                     if ext.lower() not in filetypes:
@@ -190,11 +192,10 @@ class Data(object):
         return self
         
     def reload(self):
-        if self.jsonFile:
-            with open(self.jsonFile) if isinstance(self.jsonFile, str) else self.jsonFile as jsonContents: 
-                self.syncConfig = json.load(jsonContents)
-            if not isinstance(self.jsonFile, str):
-                self.jsonFile = self.jsonFile.name
+        with open(self.jsonFile) if isinstance(self.jsonFile, str) else self.jsonFile as jsonContents: 
+            self.syncConfig = json.load(jsonContents)
+        if not isinstance(self.jsonFile, str):
+            self.jsonFile = self.jsonFile.name
         self.resetOriginals()
         self.filetypes = self.syncConfig['filetypes'] if 'filetypes' in self.syncConfig else {}
         return self.refresh()
@@ -289,7 +290,6 @@ if args.gui is False and args.jsonfile is None:
 
 processes = set()
 max_processes = args.concurrent
-dry_run = args.dry
 
 
 if args.gui:
@@ -321,4 +321,4 @@ else:
             print(printables[args.print])
         exit(0)
     else:
-        data.performSync()
+        data.performSync(args.dry)
