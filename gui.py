@@ -82,9 +82,11 @@ class GuiWindow(QtGui.QMainWindow):
         
         refreshAction = createAction("&Refresh", "view-refresh", "Ctrl+R", 'Rescan the source and destination directories', self.refresh)
         aboutAction = createAction("&About", "help-about", None, 'About %s' % self.app.name(), self.about)
+        aboutQtAction = createAction("About &Qt", "help-about", None, 'About Qt', self.aboutQt)
         toolMenu = menubar.addMenu('&Tools')
         toolMenu.addAction(refreshAction)
         toolMenu.addAction(aboutAction)
+        toolMenu.addAction(aboutQtAction)
         
         
         self.actionsRequiringAFileBeOpen = [
@@ -201,9 +203,14 @@ class GuiWindow(QtGui.QMainWindow):
             filename = QtGui.QFileDialog.getOpenFileName(self, 'Open Existing Sync File', None, "JSON (*.json)")
         if not filename:
             return
-        self.data.jsonFile = filename
-        self.data.reload()
-        self.loadData()
+        oldFilename = self.data.jsonFile
+        try:
+            self.data.jsonFile = filename
+            self.data.reload()
+            self.loadData()
+        except ValueError:
+            self.data.jsonFile = oldFilename
+            QtGui.QMessageBox.critical(self, "Error loading file", "File is not valid JSON")
 
 
     def closeEvent(self, event):
@@ -246,6 +253,9 @@ class GuiWindow(QtGui.QMainWindow):
         #TODO: About
         QtGui.QMessageBox.about(self, self.app.name() + " " + self.app.applicationVersion(), message)
 
+    def aboutQt(self):
+        QtGui.QMessageBox.aboutQt(self, self.app.name() + " " + self.app.applicationVersion())
+
 
     def loadData(self):
         self.sourceTree.clear()
@@ -265,6 +275,7 @@ class GuiWindow(QtGui.QMainWindow):
             else:
                 parent.addChild(item)
             return item
+
         def load(tree, fileList, parent, checkList={}):
             for key, value in fileList.items():
                 if key==".":
@@ -403,11 +414,11 @@ class GuiWindow(QtGui.QMainWindow):
             return changesFound()
 
         if not self.data._loaded or not self.data.getField('files'):
-            return True
+            return None
 
         def helper(current, data):
             if not data:
-                return True
+                return None
                 
             if set(current.keys()) != set(data.keys()):
                 return changesFound()
@@ -415,18 +426,18 @@ class GuiWindow(QtGui.QMainWindow):
                 if type(current[key]) != type(data[key]):
                     return changesFound()
                 if isinstance(current[key], dict):
-                    if not helper(current[key], data[key]):
-                        print("Recursed on", key, "and found changes")
-                        return False # Child already showed dialog and got a no
+                    childResult = helper(current[key], data[key])
+                    if childResult!=None:
+                        return childResult # Child already showed dialog and got a no
                 elif isinstance(current[key], list):
                     if set(current[key]) != set(data[key]):
                         return changesFound()
                 else:
                     if current[key] != data[key]:
                         return changesFound()
-            return True # No changes, simulate a "yes"
+            return None # No changes, simulate a "yes"
 
-        return helper(self.getSelected(), self.data.getField('files'))
+        return helper(self.getSelected(), self.data.getField('files')) != False
 
 
 class SettingsDialog(QtGui.QDialog):
