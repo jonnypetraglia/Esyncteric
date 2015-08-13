@@ -18,13 +18,13 @@ class GuiApp(QtGui.QApplication):
         self.setApplicationVersion(VERSION)
 
         DirListing = _DIRLISTING
-        self.window = GuiWindow(self, data)
 
         signal.signal(signal.SIGINT, self.terminate)
 
         timer = QtCore.QTimer()
         timer.start(500)  # You may change this if you wish.
         timer.timeout.connect(lambda: None)  # Let the interpreter run each 500 ms.
+        window = GuiWindow(self, data)
         sys.exit(self.exec_())
 
     def name(self):
@@ -33,9 +33,8 @@ class GuiApp(QtGui.QApplication):
         except:
             return self.applicationName()
 
-    def terminate(self, signum, frame):
-        self.window.close()
-        # self.quit()
+    def terminate(self, *args):
+        self.quit()
 
 class GuiWindow(QtGui.QMainWindow):
     def __init__(self, guiApp, data):
@@ -214,10 +213,9 @@ class GuiWindow(QtGui.QMainWindow):
 
 
     def closeEvent(self, event):
-        print("WEEE")
-        if not self._confirmDiscardChanges():
+        if self.sourceTree.isEnabled() and not self._confirmDiscardChanges():
             return event.ignore() if event else None
-        QtGui.qApp.quit()
+        self.app.terminate()
     
     def refresh(self):
         self.data.refresh()
@@ -296,7 +294,6 @@ class GuiWindow(QtGui.QMainWindow):
                     if "." in checkList and key in checkList["."]:
                         item.setCheckState(0, QtCore.Qt.Checked)
                     self._colorItem(item)
-            self.app.processEvents()
             if not isinstance(parent, QtGui.QTreeWidget):
                 if self.guiConfig('hideEmpty') and self._getChildCount(parent) == 0:
                     (parent.parent() or tree.invisibleRootItem()).removeChild(parent)
@@ -305,8 +302,13 @@ class GuiWindow(QtGui.QMainWindow):
 
         try: self.sourceTree.itemChanged.disconnect(self._clickItem)
         except Exception: pass
+
+        self.sourceTree.setEnabled(False)
+        self.destinationTree.setEnabled(False)
         load(self.destinationTree, self.data.dest.fileList, self.destinationTree)
         load(self.sourceTree, self.data.source.fileList, self.sourceTree, self.data.config.fileList)
+        self.sourceTree.setEnabled(True)
+        self.destinationTree.setEnabled(True)
         for action in self.actionsRequiringAFileBeOpen:
             action.setEnabled(True)
         self.sourceTree.itemChanged.connect(self._clickItem)
