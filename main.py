@@ -53,6 +53,7 @@ class DirListing:
                 self.walkDir(os.path.join(dir, f), files[f])
     
     def minus(self, other):
+        # TODO: really need to adjust his to account for filetypes.to
         def helper(myList, otherList):
             result = {}
             for key in myList:

@@ -190,9 +190,6 @@ class GuiWindow(QtGui.QMainWindow):
         self.data.originalDirs = {"sourceDir": self.data.getField('sourceDir'), "destDir": self.data.getField('destDir')}
         outputFile.write(self.data.toConfig())
         outputFile.resize(outputFile.pos())
-        # TODO: Should it call self.data.rescan()?
-        #  theoretically, data.config should remain the exact same
-        #  ...but is it even needed? All GuiWindow uses is source,dest,filetypes, none of the calculated
  
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls() and len(event.mimeData().urls()) == 1:
@@ -234,7 +231,6 @@ class GuiWindow(QtGui.QMainWindow):
         settingsDialog = SettingsDialog(self, self.updateSettings, self.data.syncConfig)
         settingsDialog.accepted.connect(self.refresh)
         settingsDialog.exec()
-        #TODO: Sync settings (CPU Cores, sourceDir, destDir, filetypes{cmd,to}
 
     def runSync(self, dry=False):
         d = self.data.config.__class__(self.getSelected())
