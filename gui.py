@@ -218,15 +218,11 @@ class GuiWindow(QtGui.QMainWindow):
         self.loadData()
     
     def showSettings(self):
-        def then():
-            self.data.refresh()
-            self.loadData()
         settingsDialog = SettingsDialog(self, self.updateSettings, self.data.syncConfig)
-        settingsDialog.accepted.connect(then)
+        settingsDialog.accepted.connect(self.refresh)
         settingsDialog.exec()
         #TODO: Sync settings (CPU Cores, sourceDir, destDir, filetypes{cmd,to}
-        pass
-    
+
     def runSync(self, dry=False):
         d = self.data.config.__class__(self.getSelected())
         self.data.rescan()
@@ -240,7 +236,6 @@ class GuiWindow(QtGui.QMainWindow):
     
     def dryRunSync(self):
         self.runSync(True)
-        pass
 
     def about(self):
         message = self.app.organizationName() + "\n" + self.app.organizationDomain()
