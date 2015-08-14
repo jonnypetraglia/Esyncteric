@@ -101,6 +101,19 @@ class GuiWindow(QtGui.QMainWindow):
         splitter.addWidget(self.sourceTree)
         splitter.addWidget(self.destinationTree)
         self.setCentralWidget(splitter)
+
+
+        self.statusBar = QtGui.QStatusBar()
+        self.progress = QtGui.QProgressBar()
+        self.progress.setMinimum(0)
+        self.cancelBtn = QtGui.QPushButton("Cancel")
+        self.statusBar.setStyleSheet("max-height: 32px")
+        self.statusBar.addWidget(self.progress, 1)
+        self.statusBar.addWidget(self.cancelBtn)
+        self.statusBar.setEnabled(False)
+
+        self.setStatusBar(self.statusBar)
+
         self.setAcceptDrops(True)
         self.resize(800, 600)
         self.show()
@@ -225,17 +238,50 @@ class GuiWindow(QtGui.QMainWindow):
 
     def runSync(self, dry=False):
         d = self.data.config.__class__(self.getSelected())
-        self.data.rescan()
         for x in self.disableOnSync:
             x.setEnabled(False)
-        #TODO: Disable widgets before running, add "Cancel" button somewhere (StatusBar?)
-        #d.addFiles(self.data.source.dirPath, self.data.dest.dirPath, self.data.filetypes, dry)
-        #d.removeFiles(self.data.dest.dirPath, dry)
-        #TODO: Progress tracking
-        #TODO: Reenable widgets, show some message saying it's done
+        self.statusBar.setEnabled(True)
+
+        d = self.data.__class__(self.data.jsonFile)
+        d.config = self.data.config.__class__(self.getSelected())
+        d.rescan()
+
+        self.pool = d.performSync(self.taskDone, self.taskError, dry)
+        if not self.pool.running:
+            self.syncFinished()
+            return
+        self.progress.setValue(0)
+        self.progress.setMaximum(len(self.pool.commands))
+        self.cancelBtn.clicked.connect(self.pool.kill_all)
     
     def dryRunSync(self):
         self.runSync(True)
+
+   
+    def taskDone(self, consistent_process):
+        self.progress.setValue(len(self.pool.tasks))
+        if len(self.pool.tasks) == len(self.pool.commands):
+            self.syncFinished()
+
+    def taskError(self, consistent_process):
+        self.syncFinished()
+        #print("<<<taskError", consistent_process.label)
+        if not consistent_process.killed:
+            m = "Encountered error:\n" + consistent_process.stderr()
+            QtGui.QMessageBox.critical(self, "Error", m)
+        if len(consistent_process.args)>1:
+            if os.path.exists(consistent_process.args[1]):
+                os.remove(consistent_process.args[1])
+
+    def syncFinished(self):
+        # Finished
+        self.progress.setValue(self.progress.maximum())
+        for x in self.disableOnSync:
+            x.setEnabled(True)
+        self.statusBar.setEnabled(False)
+        self.data.rescan()
+        #self.loadData()
+
 
     def about(self):
         message = self.app.organizationName() + "\n" + self.app.organizationDomain()
