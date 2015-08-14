@@ -333,9 +333,9 @@ class Data(object):
             self.jsonFile = self.jsonFile.name
         self.resetOriginals()
         self.filetypes = self.syncConfig['filetypes'] if 'filetypes' in self.syncConfig else {}
-        return self.refresh()
+        return self.rescan()
         
-    def refresh(self):
+    def rescan(self):
         self.config = DirListing(self.syncConfig['files'] if 'files' in self.syncConfig else dict())
         self.source = DirListing(self.syncConfig['sourceDir'])
         self.dest = DirListing(self.syncConfig['destDir'])

@@ -181,7 +181,7 @@ class GuiWindow(QtGui.QMainWindow):
         self.data.originalDirs = {"sourceDir": self.data.getField('sourceDir'), "destDir": self.data.getField('destDir')}
         outputFile.write(self.data.toConfig())
         outputFile.resize(outputFile.pos())
-        # TODO: Should it call self.data.refresh()?
+        # TODO: Should it call self.data.rescan()?
         #  theoretically, data.config should remain the exact same
         #  ...but is it even needed? All GuiWindow uses is source,dest,filetypes, none of the calculated
  
@@ -218,7 +218,7 @@ class GuiWindow(QtGui.QMainWindow):
         self.app.terminate()
     
     def refresh(self):
-        self.data.refresh()
+        self.data.rescan()
         self.loadData()
     
     def showSettings(self):
@@ -233,7 +233,7 @@ class GuiWindow(QtGui.QMainWindow):
     
     def runSync(self, dry=False):
         d = DirListing(self.getSelected())
-        self.data.refresh()
+        self.data.rescan()
         for x in self.disableOnSync:
             x.setEnabled(False)
         #TODO: Disable widgets before running, add "Cancel" button somewhere (StatusBar?)
