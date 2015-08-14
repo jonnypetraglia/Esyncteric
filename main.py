@@ -1,5 +1,6 @@
 # encoding: utf-8
 import json, os, subprocess, shutil, multiprocessing, argparse
+import threading, signal, sys
 
 APP_NAME = "Esyncteric"
 VERSION = "0.0.1"
@@ -119,9 +120,9 @@ class DirListing:
             return result
         return helper(self.fileList)
 
-
-    def addFiles(self, sourcePath, destPath, filetypes, dry_run=False):
-        def helper(fileList, path=""):
+    def addFiles(self, sourcePath, destPath, filetypes, callback, err_callback, dry_run=False):
+        def compileList(fileList, path=""):
+            res = []
             if "." in fileList:
                 srcDir = os.path.join(sourcePath, path)
                 destDir = os.path.join(destPath, path)
@@ -132,47 +133,181 @@ class DirListing:
                         if dry_run:
                             print("COPY:", os.path.join(path, name + ext), "->", os.path.join(path, name + ext))
                         else:
-                            shutil.copy2(
-                                os.path.join(srcDir, name + ext),
-                                os.path.join(destDir, name + ext))
+                            res.append({
+                                "label": os.path.join(path, name + ext),
+                                "cmd": shutil.copy2,
+                                "args": [os.path.join(srcDir, name + ext), os.path.join(destDir, name + ext)]
+                            })
                         continue
                     filetype = filetypes[ext.lower()]
                     cmd = list(filetype['cmd'])
-                    cmd[cmd.index("$1")] = os.path.join(srcDir, name + ext)
-                    if "$2" in cmd:
-                        cmd[cmd.index("$2")] = os.path.join(destDir, name + filetype['to'])
+                    srcFile = os.path.join(srcDir, name + ext)
+                    destFile = os.path.join(destDir, name + filetype['to'])
+                    if "{0}" in cmd:
+                        cmd[cmd.index("{0}")] = srcFile
+                        if "{1}" in cmd:
+                            cmd[cmd.index("{1}")] = destFile
+                    elif "{}" in cmd:
+                        cmd[cmd.index("{}")] = srcFile
+                        
                     if dry_run:
-                        print("CONVERT:", os.path.join(path, name + ext), "->", os.path.join(path, name + filetype['to']))
+                        print("CALL:", cmd)
                     else:
-                        processes.add(subprocess.check_call(cmd, stdout=subprocess.DEVNULL))
-                        if len(processes) >= max_processes:
-                            os.wait()
-                            processes.difference_update([p for p in processes if p.poll() is not None])
+                        res.append({
+                            "label": os.path.join(path, name+ext),
+                            "cmd": cmd,
+                            "args": [srcFile, destFile]
+                            })
             for name in fileList:
                 if name != ".":
-                    helper(fileList[name], os.path.join(path, name))
-        return helper(self.fileList)
+                    res.extend( compileList(fileList[name], os.path.join(path, name)) )
+            return res
 
-    def removeFiles(self, destPath, dry_run=False):
+        return compileList(self.fileList)
+
+    def removeFiles(self, destPath, callback, err_callback, dry_run=False):
+        def rm(target):
+            os.remove(target)
+            dirpath = os.path.dirname(target)
+            if dirpath!= "" and not os.listdir(dirpath):
+                if dry_run:
+                    print("RMDIR:", dirpath)
+                else:
+                    os.rmdir(dirpath)
         def helper(fileList, path=""):
+            res = []
             destDir = os.path.join(destPath, path)
             if "." in fileList:
                 for name, ext in fileList["."].items():
                     if dry_run:
                         print("REMOVE:", os.path.join(path, name + ext))
                     else:
-                        os.remove(os.path.join(destDir, name + ext))
+                        res.append({
+                            "label": os.path.join(path, name + ext),
+                            "cmd": rm,
+                            "args": [os.path.join(destDir, name + ext)]
+                        })
             for name in fileList:
                 if name != ".":
-                    helper(fileList[name], os.path.join(path, name))
-            if path!= "" and not os.listdir(destDir):
-                if dry_run:
-                    print("RMDIR:", destDir)
-                else:
-                    os.rmdir(destDir)
+                    res.extend( helper(fileList[name], os.path.join(path, name)) )
+            return res
         return helper(self.fileList)
 
+
+class ConsistentProcess:
+    def __init__(self, cmd, args, label):
+        self.cmd = cmd
+        self.args = args
+        self.label = label
+        if self.callable():
+            self.proc = multiprocessing.Process(target=cmd, args=args)
+        else:
+            self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+        self.killed = False
+
+    def callable(self):
+        return callable(self.cmd)
+
+    def kill(self):
+        self.killed = True
+        if self.callable():
+            self.proc.terminate()
+        else:
+            self.proc.send_signal(signal.SIGINT)
+
+    def stdout(self):
+        if self.callable():
+            return ""
+        else:
+            return self.proc.stdout.read()
+
+    def stderr(self):
+        if self.callable():
+            return ""
+        else:
+            return self.proc.stderr.read()
+
+    def is_alive(self):
+        if self.callable():
+            return self.proc.is_alive()
+        else:
+            return self.proc.poll()==None
+
+    def returncode(self):
+        if self.callable():
+            return self.proc.exitcode
+        else:
+            return self.proc.returncode
+
+    def wait(self):
+        if self.callable():
+            self.proc.start()
+            self.proc.join()
+        else:
+            self.proc.wait()
+        
+
+
+class MahPool:
+    def __init__(self, commands, cb, ercb): 
+        self.commands = commands
+        self.tasks = []
+        self.active = []
+        self.success_callback = cb
+        self.error_callback = ercb
+        self.stop_on_error = True
+        while self.another():
+            pass
+
+        self.running = len(self.active) > 0
+        
+        self.oldSignalHandler = signal.getsignal(signal.SIGINT)
+        signal.signal(signal.SIGINT, self.sigint_handler)
+
+    def kill_all(self):
+        for p in self.tasks:
+            if p.is_alive():
+                p.kill()
+
+    def sigint_handler(self, signal, frame):
+        self.kill_all()
+        if self.oldSignalHandler:
+            return self.oldSignalHandler(signal, frame)
+
+    def wait(self):
+        while self.running:
+            pass
+
+
+    def another(self):
+        if len(self.commands)==0 or len(self.active) >= args.concurrent:
+            return False
+        cmd = self.commands.pop()
+        def runInThread():
+            proc = ConsistentProcess(label=cmd['label'], cmd=cmd['cmd'], args=cmd['args'])
+            self.tasks.append(proc)
+            proc.wait()
+            self.active.remove(thread)
+            if proc.returncode()==0:
+                if self.success_callback:
+                    self.success_callback(proc)
+            else:
+                if self.error_callback:
+                    self.error_callback(proc)
+                if self.stop_on_error:
+                    self.kill_all()
+                    self.running = False
+                    return
+            if not self.another() and len(self.active)==0:
+                self.running = False;
+        thread = threading.Thread(target=runInThread)
+        self.active.append(thread)
+        thread.start()
+        return True
+
 class Data(object):
+
     def __init__(self, dataFile):
         self._loaded = False
         self.jsonFile = dataFile
@@ -213,13 +348,12 @@ class Data(object):
         self.toRemove = self.dest.minus(self.config)
         self._loaded = True
         return self
+    
+    def performSync(self, cb=None, ecb=None, dry=False):
+        cmds = self.toTransfer.addFiles(self.source.dirPath, self.dest.dirPath, self.filetypes, cb, ecb, dry)
+        cmds.extend( self.toRemove.removeFiles(self.dest.dirPath, cb, ecb, dry) )
+        return MahPool(cmds, cb, ecb)
 
-    def performSync(self, dry=False):
-        processes = self.toTransfer.addFiles(self.source.dirPath, self.dest.dirPath, s, dry)
-        self.toRemove.removeFiles(self.dest.dirPath, dry)
-        for p in processes:
-            if p.poll() is None:
-                p.wait()
     
     def setField(self, field, value):
         if field not in ['files', 'sourceDir', 'destDir', 'filetypes']:
@@ -250,9 +384,7 @@ class Data(object):
             if key == "gui" or key == "files":
                 continue
             if key not in self.syncConfig or self.original[key] != self.syncConfig[key]:
-                print(key + " has changed, ", self.original[key])
                 return True
-        print("No change")
         return False
 
 
@@ -286,10 +418,10 @@ if args.gui is False and args.jsonfile is None:
     parser.error("the following arguments are required: jsonfile")
 
 
-
-
-processes = set()
-max_processes = args.concurrent
+def handle_siginit(signal, frame):
+    print("SIGINT received, exiting")
+    sys.exit(1)
+signal.signal(signal.SIGINT, handle_siginit)
 
 
 if args.gui:
@@ -321,4 +453,17 @@ else:
             print(printables[args.print])
         exit(0)
     else:
-        data.performSync(args.dry)
+        def cb(x):
+            sys.stdout.write(".")
+            #print(x.stdout())
+        def err(x):
+            if x.killed:
+                # Just canceled
+                #print("canceled", x.cmd)
+                pass
+            else:
+                # An actual error occurred
+                print(x.stderr())
+        pool = data.performSync(cb, err, args.dry)
+        pool.wait()
+        print("Done")

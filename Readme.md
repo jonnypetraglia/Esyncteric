@@ -70,7 +70,7 @@ Configuration on a per-sync basis is stored in JSON files like so:
 
 The JSON structure is very simple: nested JSON objects refer to the path (`folder/subfolder`) and `.` (the symbol for 'current directory') refers to an array of the files you want included in that directory. Therefore, this would sync the files `/media/Music/folder/subfolder/artwork.jpg` and `/media/Music/folder/subfolder/song.flac` to `/mnt/mp3player/folder/subfolder/artwork.jpg` and `/mnt/mp3player/folder/subfolder/song.mp3`. Notice how the FLAC has been encoded to MP3 via the ffmpeg command given in 'filetypes' whereas '.jpg' has no entry so it is simply copied.
 
-For now `null` is used as a placeholder for the source and destination. I need to fix that. (TODO)
+The placeholders for 'source file' and 'destination file' are `{0}` and `{1}` respectively.
 
 
 
