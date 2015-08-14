@@ -431,7 +431,6 @@ if args.gui:
         AUTHOR,
         AUTHOR_URL,
         VERSION,
-        DirListing,
         Data(args.jsonfile))
 else:
     data = Data(args.jsonfile)

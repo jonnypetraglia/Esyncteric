@@ -3,11 +3,9 @@ import PyQt4.QtCore as QtCore
 
 import os, re, signal, sys
 
-DirListing = None
-
 
 class GuiApp(QtGui.QApplication):
-    def __init__(self, APP_NAME, AUTHOR, AUTHOR_URL, VERSION, _DIRLISTING, data):
+    def __init__(self, APP_NAME, AUTHOR, AUTHOR_URL, VERSION, data):
         super(GuiApp, self).__init__([])
         try:
             self.setApplicationDisplayName(APP_NAME)
@@ -16,8 +14,6 @@ class GuiApp(QtGui.QApplication):
         self.setOrganizationName(AUTHOR)
         self.setOrganizationDomain(AUTHOR_URL)
         self.setApplicationVersion(VERSION)
-
-        DirListing = _DIRLISTING
 
         signal.signal(signal.SIGINT, self.terminate)
 
@@ -232,7 +228,7 @@ class GuiWindow(QtGui.QMainWindow):
         pass
     
     def runSync(self, dry=False):
-        d = DirListing(self.getSelected())
+        d = self.data.config.__class__(self.getSelected())
         self.data.rescan()
         for x in self.disableOnSync:
             x.setEnabled(False)
