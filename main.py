@@ -249,7 +249,7 @@ class ConsistentProcess:
         
 
 
-class MahPool:
+class StupidSimpleProcessPool:
     def __init__(self, commands, cb, ercb): 
         self.commands = commands
         self.tasks = []
@@ -352,7 +352,7 @@ class Data(object):
     def performSync(self, cb=None, ecb=None, dry=False):
         cmds = self.toTransfer.addFiles(self.source.dirPath, self.dest.dirPath, self.filetypes, cb, ecb, dry)
         cmds.extend( self.toRemove.removeFiles(self.dest.dirPath, cb, ecb, dry) )
-        return MahPool(cmds, cb, ecb)
+        return StupidSimpleProcessPool(cmds, cb, ecb)
 
     
     def setField(self, field, value):
