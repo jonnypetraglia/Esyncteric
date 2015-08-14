@@ -279,6 +279,7 @@ class GuiWindow(QtGui.QMainWindow):
                 if key==".":
                     continue
                 item = createItem(key, parent, tree==self.sourceTree)
+                item.setData(1, QtCore.Qt.EditRole, "folder")
                 item.setChildIndicatorPolicy(QtGui.QTreeWidgetItem.ShowIndicator)
                 load(tree, value, item, checkList[key] if key in checkList else {})
             if "." in fileList:
@@ -291,6 +292,7 @@ class GuiWindow(QtGui.QMainWindow):
                         if not re.search(ffilter, key+value):
                             continue
                     item = createItem(key+value, parent, tree==self.sourceTree)
+                    item.setData(1, QtCore.Qt.EditRole, "file")
                     if "." in checkList and key in checkList["."]:
                         item.setCheckState(0, QtCore.Qt.Checked)
                     self._colorItem(item)
@@ -347,12 +349,12 @@ class GuiWindow(QtGui.QMainWindow):
         mid = int((low+high) / 2)
         
         while low <= high and self._getChild(item, mid).text(0) != childText:
-            if self._getChild(item, mid).text(0) < childText:
+            if self._getChild(item, mid).text(0).lower() < childText.lower():
                 low = mid + 1
             else:
                 high = mid -1
-            mid = int((low+high) / 2)
-        if low > high:
+            mid = int((low+high+1) / 2)
+        if low > high or self._getChild(item, mid).text(0) != childText:
             return None
         return self._getChild(item, mid)
         
@@ -389,7 +391,13 @@ class GuiWindow(QtGui.QMainWindow):
         def searchDown(item, searchPath):
             searchItems = []
             for p in searchPath:
-                item = self._findChild(item, p.text(0))
+                ptype = p.data(1, QtCore.Qt.EditRole)
+                filename = p.text(0)
+                spl = os.path.splitext(filename)
+                if ptype == "file":
+                    if spl[1] in self.data.filetypes:
+                        filename = spl[0] + self.data.filetypes[spl[1]]['to']
+                item = self._findChild(item, filename)
                 if not item:
                     break
                 searchItems.append(item)
